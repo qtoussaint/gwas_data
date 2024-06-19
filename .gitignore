@@ -6,6 +6,7 @@
 *.err
 output.*
 error.*
+*.txt
 
 # History files
 .Rhistory
