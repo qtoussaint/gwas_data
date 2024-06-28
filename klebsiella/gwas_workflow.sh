@@ -13,10 +13,10 @@
 
 RSCRIPT_PATH="/nfs/research/jlees/jacqueline/gwas_workflow/code/gwas_workflow/gwas_pipeline.R"
 
-DATA="/nfs/research/jlees/jacqueline/gwas_data/klebsiella/gwas_data_bundles/oligogenic_EF_30_H_0_9_associative_30fba35a0eaa67.json"
-STAN_MODEL="/nfs/research/jlees/jacqueline/lasso_ridge_analysis/stan_models/standard/BBGWAS-cont-association.stan"
-ANALYSIS_TYPE="inference"
-ANALYSIS_NICKNAME="test"
-OUTPUT_DIR="/nfs/research/jlees/jacqueline/gwas_data/klebsiella/gwas_runs"
+DATA="--data /nfs/research/jlees/jacqueline/gwas_data/klebsiella/gwas_data_bundles/single_EF_100_H_0_9_associative_30fba31bba07f3.json"
+STAN_MODEL="--stan_model /nfs/research/jlees/jacqueline/lasso_ridge_analysis/stan_models/standard/BBGWAS-cont-association.stan"
+ANALYSIS_TYPE="--analysis_type inference"
+ANALYSIS_NICKNAME="--analysis_nickname test"
+OUTPUT_DIR="--output_directory /nfs/research/jlees/jacqueline/gwas_data/klebsiella/gwas_runs"
 
-R --no-save $RSCRIPT_PATH $DATA $STAN_MODEL $ANALYSIS_TYPE $ANALYSIS_NICKNAME $OUTPUT_DIR
+Rscript $RSCRIPT_PATH $DATA $STAN_MODEL $ANALYSIS_TYPE $ANALYSIS_NICKNAME $OUTPUT_DIR
