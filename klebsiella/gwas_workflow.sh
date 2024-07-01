@@ -11,6 +11,8 @@
 
 #################################################################################
 
+module load r/4.2.2
+
 RSCRIPT_PATH="/nfs/research/jlees/jacqueline/gwas_workflow/code/gwas_workflow/gwas_pipeline.R"
 
 DATA="--data /nfs/research/jlees/jacqueline/gwas_data/klebsiella/gwas_data_bundles/single_EF_100_H_0_9_associative_30fba31bba07f3.json"
