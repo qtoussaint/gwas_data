@@ -1,0 +1,1090 @@
+
+R version 4.2.2 (2022-10-31) -- "Innocent and Trusting"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> #!/usr/bin/env bash
+> 
+> ######################################################################################
+> ##
+> ## FIRST SECTION:
+> ## Here we define the requirements we need to run our job: CPUs, RAM, run time, ...
+> ##
+> ######################################################################################
+> 
+> #BSUB -J gon_USA_pen # job name
+> #BSUB -n 4          # number of tasksi/CPUs in job
+> #BSUB -q standard   # queue
+> #BSUB -e error.%J   # error file name in which %J is replaced by the job ID
+> #BSUB -o output.%J  # output file name in which %J is replaced by the job ID
+> 
+> ######################################################################################
+> ##
+> ## SECOND SECTION:
+> ## Here we define the modules we need to be loaded in order to run our job.
+> ## In this case, we need to load the R module, ... but first we make sure
+> ## we start off with a sane, blank environment so we purge all modules
+> ##
+> ######################################################################################
+> 
+> module purge
+
+R version 4.2.2 (2022-10-31) -- "Innocent and Trusting"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ### Pipeline for ordinal GWAS model
+> 
+> library("vcfR")
+> 
+> #genotype
+> 
+> #USA
+> genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/USA_all.vcf.gz")
+Scanning file to determine attributes.
+File attributes:
+  meta lines: 29
+  header_line: 30
+  variant count: 53526
+  column count: 1110
+Meta line 29 read in.
+All meta lines processed.
+gt matrix initialized.
+Character matrix gt created.
+  Character matrix gt rows: 53526
+  Character matrix gt cols: 1110
+  skip: 0
+  nrows: 53526
+  row_num: 0
+Processed variant 1000Processed variant 2000Processed variant 3000Processed variant 4000Processed variant 5000Processed variant 6000Processed variant 7000Processed variant 8000Processed variant 9000Processed variant 10000Processed variant 11000Processed variant 12000Processed variant 13000Processed variant 14000Processed variant 15000Processed variant 16000Processed variant 17000Processed variant 18000Processed variant 19000Processed variant 20000Processed variant 21000Processed variant 22000Processed variant 23000Processed variant 24000Processed variant 25000Processed variant 26000Processed variant 27000Processed variant 28000Processed variant 29000Processed variant 30000Processed variant 31000Processed variant 32000Processed variant 33000Processed variant 34000Processed variant 35000Processed variant 36000Processed variant 37000Processed variant 38000Processed variant 39000Processed variant 40000Processed variant 41000Processed variant 42000Processed variant 43000Processed variant 44000Processed variant 45000Processed variant 46000Processed variant 47000Processed variant 48000Processed variant 49000Processed variant 50000Processed variant 51000Processed variant 52000Processed variant 53000Processed variant: 53526
+All variants processed
+> genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> genotype <- t(genotype)
+> 
+> #UK
+> #genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/UK_all.vcf.gz")
+> #genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> #genotype <- t(genotype)
+> 
+> #missing2ref
+> genotype[is.na(genotype)] <- 0
+> 
+> #rename rows for later data sorting
+> genotype_rownames <- rownames(genotype)
+> genotype_rownames <- substring(genotype_rownames, 9)
+> rownames(genotype) <- genotype_rownames
+> 
+> 
+> # lineages
+> 
+> #USA
+> lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/lineages/poppunk_clusters_USA/poppunk_clusters_USA_clusters.csv")
+> #UK/Canada
+> #lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/poppunk_clusters_UK/poppunk_clusters_UK_clusters.csv")
+> 
+> 
+> # phenotype
+> phenotype <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/41564_2018_309_MOESM3_ESM.csv", header = TRUE)
+> colnames(phenotype) <- phenotype[1,]
+> phenotype <- phenotype[-1,]
+> 
+> #get only desired phenotype dataset
+> 
+> #index separate countries
+> USA <- which(phenotype[,1] == "USA")
+> #UK <- which(phenotype[,1] == "England")
+> #Canada <- which(phenotype[,1] == "Canada")
+> #UK_Canada <- c(UK, Canada)
+> 
+> #USA dataset
+> phenotype <- phenotype[USA,]
+> 
+> #UK/Canada dataset
+> #phenotype <- phenotype[UK_Canada,]
+> 
+> # choose which phenotype column (which antibiotic) you want to test
+> chosen_antibiotic <- 3
+> 
+> # Reorder samples in genotype & lineages file to match phenotype
+> # genotype samples from the non-desired phenotype dataset (USA or UK/Canada) will be removed
+> 
+> sample_index <- match(phenotype[,2], lineages[,1])
+> #there is one sample in the lineage data that's not in the phenotype data - remove it from lin
+> removethese <- which(is.na(sample_index))
+> phenotype <- phenotype[-removethese,]
+> #redo sample index and sort as usual
+> sample_index <- match(phenotype[,2], lineages[,1])
+> lineages <- lineages[sample_index,]
+> 
+> 
+> # Define V = number of variants, L = number of lineages, N = number of samples
+> L <- as.numeric(length(unique(lineages$Cluster)))
+> V <- as.numeric(ncol(genotype))
+> N <- as.numeric(nrow(phenotype))
+> K <- as.numeric(length(unique(phenotype[,chosen_antibiotic])))
+> 
+> # print for future reference
+> print(V)
+[1] 53526
+> print(L)
+[1] 1101
+> print(N)
+[1] 1101
+> print(K)
+[1] 12
+> 
+> # Check that the phenotypes are ordered correctly
+> ordered_categories <- sort(as.numeric(unique(phenotype[,chosen_antibiotic])))
+> print(ordered_categories)
+ [1]  0.030  0.060  0.125  0.250  0.500  1.000  2.000  4.000  8.000 16.000
+[11] 32.000 64.000
+> 
+> # Convert the chosen phenotype to its ordinal category
+> categorical_phenotype <- as.numeric(phenotype[,chosen_antibiotic])
+> for (i in 1:N) {
++   categorical_phenotype[i] <- which(ordered_categories == categorical_phenotype[i])
++ }
+> 
+> 
+> # Concat into one file (to check for correctness)
+> 
+> checkme <- cbind(rownames(genotype), genotype[,1], phenotype, categorical_phenotype, lineages, row.names = rownames(phenotype))
+> write.csv(checkme, "/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/checkme.csv", row.names=TRUE)
+> 
+> 
+> ### Read in appropriate Stan model
+> 
+> library(cmdstanr)
+> 
+> mod <- cmdstan_model("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/BBGWAS-ord-association_gon.stan")
+
+R version 4.2.2 (2022-10-31) -- "Innocent and Trusting"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ### Pipeline for ordinal GWAS model
+> 
+> library("vcfR")
+> 
+> #genotype
+> 
+> #USA
+> genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/USA_all.vcf.gz")
+Scanning file to determine attributes.
+File attributes:
+  meta lines: 29
+  header_line: 30
+  variant count: 53526
+  column count: 1110
+Meta line 29 read in.
+All meta lines processed.
+gt matrix initialized.
+Character matrix gt created.
+  Character matrix gt rows: 53526
+  Character matrix gt cols: 1110
+  skip: 0
+  nrows: 53526
+  row_num: 0
+Processed variant 1000Processed variant 2000Processed variant 3000Processed variant 4000Processed variant 5000Processed variant 6000Processed variant 7000Processed variant 8000Processed variant 9000Processed variant 10000Processed variant 11000Processed variant 12000Processed variant 13000Processed variant 14000Processed variant 15000Processed variant 16000Processed variant 17000Processed variant 18000Processed variant 19000Processed variant 20000Processed variant 21000Processed variant 22000Processed variant 23000Processed variant 24000Processed variant 25000Processed variant 26000Processed variant 27000Processed variant 28000Processed variant 29000Processed variant 30000Processed variant 31000Processed variant 32000Processed variant 33000Processed variant 34000Processed variant 35000Processed variant 36000Processed variant 37000Processed variant 38000Processed variant 39000Processed variant 40000Processed variant 41000Processed variant 42000Processed variant 43000Processed variant 44000Processed variant 45000Processed variant 46000Processed variant 47000Processed variant 48000Processed variant 49000Processed variant 50000Processed variant 51000Processed variant 52000Processed variant 53000Processed variant: 53526
+All variants processed
+> genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> genotype <- t(genotype)
+> 
+> #UK
+> #genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/UK_all.vcf.gz")
+> #genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> #genotype <- t(genotype)
+> 
+> #missing2ref
+> genotype[is.na(genotype)] <- 0
+> 
+> #rename rows for later data sorting
+> genotype_rownames <- rownames(genotype)
+> genotype_rownames <- substring(genotype_rownames, 9)
+> rownames(genotype) <- genotype_rownames
+> 
+> 
+> # lineages
+> 
+> #USA
+> lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/lineages/poppunk_clusters_USA/poppunk_clusters_USA_clusters.csv")
+> #UK/Canada
+> #lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/poppunk_clusters_UK/poppunk_clusters_UK_clusters.csv")
+> 
+> 
+> # phenotype
+> phenotype <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/41564_2018_309_MOESM3_ESM.csv", header = TRUE)
+> colnames(phenotype) <- phenotype[1,]
+> phenotype <- phenotype[-1,]
+> 
+> #get only desired phenotype dataset
+> 
+> #index separate countries
+> USA <- which(phenotype[,1] == "USA")
+> #UK <- which(phenotype[,1] == "England")
+> #Canada <- which(phenotype[,1] == "Canada")
+> #UK_Canada <- c(UK, Canada)
+> 
+> #USA dataset
+> phenotype <- phenotype[USA,]
+> 
+> #UK/Canada dataset
+> #phenotype <- phenotype[UK_Canada,]
+> 
+> # choose which phenotype column (which antibiotic) you want to test
+> chosen_antibiotic <- 3
+> 
+> # Reorder samples in genotype & lineages file to match phenotype
+> # genotype samples from the non-desired phenotype dataset (USA or UK/Canada) will be removed
+> 
+> sample_index <- match(phenotype[,2], lineages[,1])
+> #there is one sample in the lineage data that's not in the phenotype data - remove it from lin
+> removethese <- which(is.na(sample_index))
+> phenotype <- phenotype[-removethese,]
+> #redo sample index and sort as usual
+> sample_index <- match(phenotype[,2], lineages[,1])
+> lineages <- lineages[sample_index,]
+> 
+> 
+> # Define V = number of variants, L = number of lineages, N = number of samples
+> L <- as.numeric(length(unique(lineages$Cluster)))
+> V <- as.numeric(ncol(genotype))
+> N <- as.numeric(nrow(phenotype))
+> K <- as.numeric(length(unique(phenotype[,chosen_antibiotic])))
+> 
+> # print for future reference
+> print(V)
+[1] 53526
+> print(L)
+[1] 1101
+> print(N)
+[1] 1101
+> print(K)
+[1] 12
+> 
+> # Check that the phenotypes are ordered correctly
+> ordered_categories <- sort(as.numeric(unique(phenotype[,chosen_antibiotic])))
+> print(ordered_categories)
+ [1]  0.030  0.060  0.125  0.250  0.500  1.000  2.000  4.000  8.000 16.000
+[11] 32.000 64.000
+> 
+> # Convert the chosen phenotype to its ordinal category
+> categorical_phenotype <- as.numeric(phenotype[,chosen_antibiotic])
+> for (i in 1:N) {
++   categorical_phenotype[i] <- which(ordered_categories == categorical_phenotype[i])
++ }
+> 
+> 
+> # Concat into one file (to check for correctness)
+> 
+> checkme <- cbind(rownames(genotype), genotype[,1], phenotype, categorical_phenotype, lineages, row.names = rownames(phenotype))
+> write.csv(checkme, "/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/checkme.csv", row.names=TRUE)
+> 
+> 
+> ### Read in appropriate Stan model
+> 
+> library(cmdstanr)
+> 
+> mod <- cmdstan_model("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/BBGWAS-ord-association_gon.stan")
+
+R version 4.2.2 (2022-10-31) -- "Innocent and Trusting"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ### Pipeline for ordinal GWAS model
+> 
+> library("vcfR")
+> 
+> #genotype
+> 
+> #USA
+> genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/USA_all.vcf.gz")
+Scanning file to determine attributes.
+File attributes:
+  meta lines: 29
+  header_line: 30
+  variant count: 53526
+  column count: 1110
+Meta line 29 read in.
+All meta lines processed.
+gt matrix initialized.
+Character matrix gt created.
+  Character matrix gt rows: 53526
+  Character matrix gt cols: 1110
+  skip: 0
+  nrows: 53526
+  row_num: 0
+Processed variant 1000Processed variant 2000Processed variant 3000Processed variant 4000Processed variant 5000Processed variant 6000Processed variant 7000Processed variant 8000Processed variant 9000Processed variant 10000Processed variant 11000Processed variant 12000Processed variant 13000Processed variant 14000Processed variant 15000Processed variant 16000Processed variant 17000Processed variant 18000Processed variant 19000Processed variant 20000Processed variant 21000Processed variant 22000Processed variant 23000Processed variant 24000Processed variant 25000Processed variant 26000Processed variant 27000Processed variant 28000Processed variant 29000Processed variant 30000Processed variant 31000Processed variant 32000Processed variant 33000Processed variant 34000Processed variant 35000Processed variant 36000Processed variant 37000Processed variant 38000Processed variant 39000Processed variant 40000Processed variant 41000Processed variant 42000Processed variant 43000Processed variant 44000Processed variant 45000Processed variant 46000Processed variant 47000Processed variant 48000Processed variant 49000Processed variant 50000Processed variant 51000Processed variant 52000Processed variant 53000Processed variant: 53526
+All variants processed
+> genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> genotype <- t(genotype)
+> 
+> #UK
+> #genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/UK_all.vcf.gz")
+> #genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> #genotype <- t(genotype)
+> 
+> #missing2ref
+> genotype[is.na(genotype)] <- 0
+> 
+> #rename rows for later data sorting
+> genotype_rownames <- rownames(genotype)
+> genotype_rownames <- substring(genotype_rownames, 9)
+> rownames(genotype) <- genotype_rownames
+> 
+> 
+> # lineages
+> 
+> #USA
+> lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/lineages/poppunk_clusters_USA/poppunk_clusters_USA_clusters.csv")
+> #UK/Canada
+> #lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/poppunk_clusters_UK/poppunk_clusters_UK_clusters.csv")
+> 
+> 
+> # phenotype
+> phenotype <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/41564_2018_309_MOESM3_ESM.csv", header = TRUE)
+> colnames(phenotype) <- phenotype[1,]
+> phenotype <- phenotype[-1,]
+> 
+> #get only desired phenotype dataset
+> 
+> #index separate countries
+> USA <- which(phenotype[,1] == "USA")
+> #UK <- which(phenotype[,1] == "England")
+> #Canada <- which(phenotype[,1] == "Canada")
+> #UK_Canada <- c(UK, Canada)
+> 
+> #USA dataset
+> phenotype <- phenotype[USA,]
+> 
+> #UK/Canada dataset
+> #phenotype <- phenotype[UK_Canada,]
+> 
+> # choose which phenotype column (which antibiotic) you want to test
+> chosen_antibiotic <- 3
+> 
+> # Reorder samples in genotype & lineages file to match phenotype
+> # genotype samples from the non-desired phenotype dataset (USA or UK/Canada) will be removed
+> 
+> sample_index <- match(phenotype[,2], lineages[,1])
+> #there is one sample in the lineage data that's not in the phenotype data - remove it from lin
+> removethese <- which(is.na(sample_index))
+> phenotype <- phenotype[-removethese,]
+> #redo sample index and sort as usual
+> sample_index <- match(phenotype[,2], lineages[,1])
+> lineages <- lineages[sample_index,]
+> 
+> 
+> # Define V = number of variants, L = number of lineages, N = number of samples
+> L <- as.numeric(length(unique(lineages$Cluster)))
+> V <- as.numeric(ncol(genotype))
+> N <- as.numeric(nrow(phenotype))
+> K <- as.numeric(length(unique(phenotype[,chosen_antibiotic])))
+> 
+> # print for future reference
+> print(V)
+[1] 53526
+> print(L)
+[1] 1101
+> print(N)
+[1] 1101
+> print(K)
+[1] 12
+> 
+> # Check that the phenotypes are ordered correctly
+> ordered_categories <- sort(as.numeric(unique(phenotype[,chosen_antibiotic])))
+> print(ordered_categories)
+ [1]  0.030  0.060  0.125  0.250  0.500  1.000  2.000  4.000  8.000 16.000
+[11] 32.000 64.000
+> 
+> # Convert the chosen phenotype to its ordinal category
+> categorical_phenotype <- as.numeric(phenotype[,chosen_antibiotic])
+> for (i in 1:N) {
++   categorical_phenotype[i] <- which(ordered_categories == categorical_phenotype[i])
++ }
+> 
+> 
+> # Concat into one file (to check for correctness)
+> 
+> checkme <- cbind(rownames(genotype), genotype[,1], phenotype, categorical_phenotype, lineages, row.names = rownames(phenotype))
+> write.csv(checkme, "/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/checkme.csv", row.names=TRUE)
+> 
+> 
+> ### Read in appropriate Stan model
+> 
+> library(cmdstanr)
+> 
+> mod <- cmdstan_model("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/BBGWAS-ord-association_gon.stan")
+
+R version 4.2.2 (2022-10-31) -- "Innocent and Trusting"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ### Pipeline for ordinal GWAS model
+> 
+> library("vcfR")
+> 
+> #genotype
+> 
+> #USA
+> genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/USA_all.vcf.gz")
+Scanning file to determine attributes.
+File attributes:
+  meta lines: 29
+  header_line: 30
+  variant count: 53526
+  column count: 1110
+Meta line 29 read in.
+All meta lines processed.
+gt matrix initialized.
+Character matrix gt created.
+  Character matrix gt rows: 53526
+  Character matrix gt cols: 1110
+  skip: 0
+  nrows: 53526
+  row_num: 0
+Processed variant 1000Processed variant 2000Processed variant 3000Processed variant 4000Processed variant 5000Processed variant 6000Processed variant 7000Processed variant 8000Processed variant 9000Processed variant 10000Processed variant 11000Processed variant 12000Processed variant 13000Processed variant 14000Processed variant 15000Processed variant 16000Processed variant 17000Processed variant 18000Processed variant 19000Processed variant 20000Processed variant 21000Processed variant 22000Processed variant 23000Processed variant 24000Processed variant 25000Processed variant 26000Processed variant 27000Processed variant 28000Processed variant 29000Processed variant 30000Processed variant 31000Processed variant 32000Processed variant 33000Processed variant 34000Processed variant 35000Processed variant 36000Processed variant 37000Processed variant 38000Processed variant 39000Processed variant 40000Processed variant 41000Processed variant 42000Processed variant 43000Processed variant 44000Processed variant 45000Processed variant 46000Processed variant 47000Processed variant 48000Processed variant 49000Processed variant 50000Processed variant 51000Processed variant 52000Processed variant 53000Processed variant: 53526
+All variants processed
+> genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> genotype <- t(genotype)
+> 
+> #UK
+> #genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/UK_all.vcf.gz")
+> #genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> #genotype <- t(genotype)
+> 
+> #missing2ref
+> genotype[is.na(genotype)] <- 0
+> 
+> #rename rows for later data sorting
+> genotype_rownames <- rownames(genotype)
+> genotype_rownames <- substring(genotype_rownames, 9)
+> rownames(genotype) <- genotype_rownames
+> 
+> 
+> # lineages
+> 
+> #USA
+> lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/lineages/poppunk_clusters_USA/poppunk_clusters_USA_clusters.csv")
+> #UK/Canada
+> #lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/poppunk_clusters_UK/poppunk_clusters_UK_clusters.csv")
+> 
+> 
+> # phenotype
+> phenotype <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/41564_2018_309_MOESM3_ESM.csv", header = TRUE)
+> colnames(phenotype) <- phenotype[1,]
+> phenotype <- phenotype[-1,]
+> 
+> #get only desired phenotype dataset
+> 
+> #index separate countries
+> USA <- which(phenotype[,1] == "USA")
+> #UK <- which(phenotype[,1] == "England")
+> #Canada <- which(phenotype[,1] == "Canada")
+> #UK_Canada <- c(UK, Canada)
+> 
+> #USA dataset
+> phenotype <- phenotype[USA,]
+> 
+> #UK/Canada dataset
+> #phenotype <- phenotype[UK_Canada,]
+> 
+> # choose which phenotype column (which antibiotic) you want to test
+> chosen_antibiotic <- 3
+> 
+> # Reorder samples in genotype & lineages file to match phenotype
+> # genotype samples from the non-desired phenotype dataset (USA or UK/Canada) will be removed
+> 
+> sample_index <- match(phenotype[,2], lineages[,1])
+> #there is one sample in the lineage data that's not in the phenotype data - remove it from lin
+> removethese <- which(is.na(sample_index))
+> phenotype <- phenotype[-removethese,]
+> #redo sample index and sort as usual
+> sample_index <- match(phenotype[,2], lineages[,1])
+> lineages <- lineages[sample_index,]
+> 
+> 
+> # Define V = number of variants, L = number of lineages, N = number of samples
+> L <- as.numeric(length(unique(lineages$Cluster)))
+> V <- as.numeric(ncol(genotype))
+> N <- as.numeric(nrow(phenotype))
+> K <- as.numeric(length(unique(phenotype[,chosen_antibiotic])))
+> 
+> # print for future reference
+> print(V)
+[1] 53526
+> print(L)
+[1] 1101
+> print(N)
+[1] 1101
+> print(K)
+[1] 12
+> 
+> # Check that the phenotypes are ordered correctly
+> ordered_categories <- sort(as.numeric(unique(phenotype[,chosen_antibiotic])))
+> print(ordered_categories)
+ [1]  0.030  0.060  0.125  0.250  0.500  1.000  2.000  4.000  8.000 16.000
+[11] 32.000 64.000
+> 
+> # Convert the chosen phenotype to its ordinal category
+> categorical_phenotype <- as.numeric(phenotype[,chosen_antibiotic])
+> for (i in 1:N) {
++   categorical_phenotype[i] <- which(ordered_categories == categorical_phenotype[i])
++ }
+> 
+> 
+> # Concat into one file (to check for correctness)
+> 
+> checkme <- cbind(rownames(genotype), genotype[,1], phenotype, categorical_phenotype, lineages, row.names = rownames(phenotype))
+> write.csv(checkme, "/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/checkme.csv", row.names=TRUE)
+> 
+> 
+> ### Read in appropriate Stan model
+> 
+> library(cmdstanr)
+> 
+> mod <- cmdstan_model("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/BBGWAS-ord-association_gon.stan")
+
+R version 4.2.2 (2022-10-31) -- "Innocent and Trusting"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ### Pipeline for ordinal GWAS model
+> 
+> library("vcfR")
+> 
+> #genotype
+> 
+> #USA
+> genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/USA_all.vcf.gz")
+Scanning file to determine attributes.
+File attributes:
+  meta lines: 29
+  header_line: 30
+  variant count: 53526
+  column count: 1110
+Meta line 29 read in.
+All meta lines processed.
+gt matrix initialized.
+Character matrix gt created.
+  Character matrix gt rows: 53526
+  Character matrix gt cols: 1110
+  skip: 0
+  nrows: 53526
+  row_num: 0
+Processed variant 1000Processed variant 2000Processed variant 3000Processed variant 4000Processed variant 5000Processed variant 6000Processed variant 7000Processed variant 8000Processed variant 9000Processed variant 10000Processed variant 11000Processed variant 12000Processed variant 13000Processed variant 14000Processed variant 15000Processed variant 16000Processed variant 17000Processed variant 18000Processed variant 19000Processed variant 20000Processed variant 21000Processed variant 22000Processed variant 23000Processed variant 24000Processed variant 25000Processed variant 26000Processed variant 27000Processed variant 28000Processed variant 29000Processed variant 30000Processed variant 31000Processed variant 32000Processed variant 33000Processed variant 34000Processed variant 35000Processed variant 36000Processed variant 37000Processed variant 38000Processed variant 39000Processed variant 40000Processed variant 41000Processed variant 42000Processed variant 43000Processed variant 44000Processed variant 45000Processed variant 46000Processed variant 47000Processed variant 48000Processed variant 49000Processed variant 50000Processed variant 51000Processed variant 52000Processed variant 53000Processed variant: 53526
+All variants processed
+> genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> genotype <- t(genotype)
+> 
+> #UK
+> #genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/UK_all.vcf.gz")
+> #genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> #genotype <- t(genotype)
+> 
+> #missing2ref
+> genotype[is.na(genotype)] <- 0
+> 
+> #rename rows for later data sorting
+> genotype_rownames <- rownames(genotype)
+> genotype_rownames <- substring(genotype_rownames, 9)
+> rownames(genotype) <- genotype_rownames
+> 
+> 
+> # lineages
+> 
+> #USA
+> lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/lineages/poppunk_clusters_USA/poppunk_clusters_USA_clusters.csv")
+> #UK/Canada
+> #lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/poppunk_clusters_UK/poppunk_clusters_UK_clusters.csv")
+> 
+> 
+> # phenotype
+> phenotype <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/41564_2018_309_MOESM3_ESM.csv", header = TRUE)
+> colnames(phenotype) <- phenotype[1,]
+> phenotype <- phenotype[-1,]
+> 
+> #get only desired phenotype dataset
+> 
+> #index separate countries
+> USA <- which(phenotype[,1] == "USA")
+> #UK <- which(phenotype[,1] == "England")
+> #Canada <- which(phenotype[,1] == "Canada")
+> #UK_Canada <- c(UK, Canada)
+> 
+> #USA dataset
+> phenotype <- phenotype[USA,]
+> 
+> #UK/Canada dataset
+> #phenotype <- phenotype[UK_Canada,]
+> 
+> # choose which phenotype column (which antibiotic) you want to test
+> chosen_antibiotic <- 3
+> 
+> # Reorder samples in genotype & lineages file to match phenotype
+> # genotype samples from the non-desired phenotype dataset (USA or UK/Canada) will be removed
+> 
+> sample_index <- match(phenotype[,2], lineages[,1])
+> #there is one sample in the lineage data that's not in the phenotype data - remove it from lin
+> removethese <- which(is.na(sample_index))
+> phenotype <- phenotype[-removethese,]
+> #redo sample index and sort as usual
+> sample_index <- match(phenotype[,2], lineages[,1])
+> lineages <- lineages[sample_index,]
+> 
+> 
+> # Define V = number of variants, L = number of lineages, N = number of samples
+> L <- as.numeric(length(unique(lineages$Cluster)))
+> V <- as.numeric(ncol(genotype))
+> N <- as.numeric(nrow(phenotype))
+> K <- as.numeric(length(unique(phenotype[,chosen_antibiotic])))
+> 
+> # print for future reference
+> print(V)
+[1] 53526
+> print(L)
+[1] 1101
+> print(N)
+[1] 1101
+> print(K)
+[1] 12
+> 
+> # Check that the phenotypes are ordered correctly
+> ordered_categories <- sort(as.numeric(unique(phenotype[,chosen_antibiotic])))
+> print(ordered_categories)
+ [1]  0.030  0.060  0.125  0.250  0.500  1.000  2.000  4.000  8.000 16.000
+[11] 32.000 64.000
+> 
+> # Convert the chosen phenotype to its ordinal category
+> categorical_phenotype <- as.numeric(phenotype[,chosen_antibiotic])
+> for (i in 1:N) {
++   categorical_phenotype[i] <- which(ordered_categories == categorical_phenotype[i])
++ }
+> 
+> 
+> # Concat into one file (to check for correctness)
+> 
+> checkme <- cbind(rownames(genotype), genotype[,1], phenotype, categorical_phenotype, lineages, row.names = rownames(phenotype))
+> write.csv(checkme, "/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/checkme.csv", row.names=TRUE)
+> 
+> 
+> ### Read in appropriate Stan model
+> 
+> library(cmdstanr)
+> 
+> mod <- cmdstan_model("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/BBGWAS-ord-association_gon.stan")
+
+R version 4.2.2 (2022-10-31) -- "Innocent and Trusting"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ### Pipeline for ordinal GWAS model
+> 
+> library("vcfR")
+> 
+> #genotype
+> 
+> #USA
+> genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/USA_all.vcf.gz")
+Scanning file to determine attributes.
+File attributes:
+  meta lines: 29
+  header_line: 30
+  variant count: 53526
+  column count: 1110
+Meta line 29 read in.
+All meta lines processed.
+gt matrix initialized.
+Character matrix gt created.
+  Character matrix gt rows: 53526
+  Character matrix gt cols: 1110
+  skip: 0
+  nrows: 53526
+  row_num: 0
+Processed variant 1000Processed variant 2000Processed variant 3000Processed variant 4000Processed variant 5000Processed variant 6000Processed variant 7000Processed variant 8000Processed variant 9000Processed variant 10000Processed variant 11000Processed variant 12000Processed variant 13000Processed variant 14000Processed variant 15000Processed variant 16000Processed variant 17000Processed variant 18000Processed variant 19000Processed variant 20000Processed variant 21000Processed variant 22000Processed variant 23000Processed variant 24000Processed variant 25000Processed variant 26000Processed variant 27000Processed variant 28000Processed variant 29000Processed variant 30000Processed variant 31000Processed variant 32000Processed variant 33000Processed variant 34000Processed variant 35000Processed variant 36000Processed variant 37000Processed variant 38000Processed variant 39000Processed variant 40000Processed variant 41000Processed variant 42000Processed variant 43000Processed variant 44000Processed variant 45000Processed variant 46000Processed variant 47000Processed variant 48000Processed variant 49000Processed variant 50000Processed variant 51000Processed variant 52000Processed variant 53000Processed variant: 53526
+All variants processed
+> genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> genotype <- t(genotype)
+> 
+> #UK
+> #genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/UK_all.vcf.gz")
+> #genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> #genotype <- t(genotype)
+> 
+> #missing2ref
+> genotype[is.na(genotype)] <- 0
+> 
+> #rename rows for later data sorting
+> genotype_rownames <- rownames(genotype)
+> genotype_rownames <- substring(genotype_rownames, 9)
+> rownames(genotype) <- genotype_rownames
+> 
+> 
+> # lineages
+> 
+> #USA
+> lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/lineages/poppunk_clusters_USA/poppunk_clusters_USA_clusters.csv")
+> #UK/Canada
+> #lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/poppunk_clusters_UK/poppunk_clusters_UK_clusters.csv")
+> 
+> 
+> # phenotype
+> phenotype <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/41564_2018_309_MOESM3_ESM.csv", header = TRUE)
+> colnames(phenotype) <- phenotype[1,]
+> phenotype <- phenotype[-1,]
+> 
+> #get only desired phenotype dataset
+> 
+> #index separate countries
+> USA <- which(phenotype[,1] == "USA")
+> #UK <- which(phenotype[,1] == "England")
+> #Canada <- which(phenotype[,1] == "Canada")
+> #UK_Canada <- c(UK, Canada)
+> 
+> #USA dataset
+> phenotype <- phenotype[USA,]
+> 
+> #UK/Canada dataset
+> #phenotype <- phenotype[UK_Canada,]
+> 
+> # choose which phenotype column (which antibiotic) you want to test
+> chosen_antibiotic <- 3
+> 
+> # Reorder samples in genotype & lineages file to match phenotype
+> # genotype samples from the non-desired phenotype dataset (USA or UK/Canada) will be removed
+> 
+> sample_index <- match(phenotype[,2], lineages[,1])
+> #there is one sample in the lineage data that's not in the phenotype data - remove it from lin
+> removethese <- which(is.na(sample_index))
+> phenotype <- phenotype[-removethese,]
+> #redo sample index and sort as usual
+> sample_index <- match(phenotype[,2], lineages[,1])
+> lineages <- lineages[sample_index,]
+> 
+> 
+> # Define V = number of variants, L = number of lineages, N = number of samples
+> L <- as.numeric(length(unique(lineages$Cluster)))
+> V <- as.numeric(ncol(genotype))
+> N <- as.numeric(nrow(phenotype))
+> K <- as.numeric(length(unique(phenotype[,chosen_antibiotic])))
+> 
+> # print for future reference
+> print(V)
+[1] 53526
+> print(L)
+[1] 1101
+> print(N)
+[1] 1101
+> print(K)
+[1] 12
+> 
+> # Check that the phenotypes are ordered correctly
+> ordered_categories <- sort(as.numeric(unique(phenotype[,chosen_antibiotic])))
+> print(ordered_categories)
+ [1]  0.030  0.060  0.125  0.250  0.500  1.000  2.000  4.000  8.000 16.000
+[11] 32.000 64.000
+> 
+> # Convert the chosen phenotype to its ordinal category
+> categorical_phenotype <- as.numeric(phenotype[,chosen_antibiotic])
+> for (i in 1:N) {
++   categorical_phenotype[i] <- which(ordered_categories == categorical_phenotype[i])
++ }
+> 
+> 
+> # Concat into one file (to check for correctness)
+> 
+> checkme <- cbind(rownames(genotype), genotype[,1], phenotype, categorical_phenotype, lineages, row.names = rownames(phenotype))
+> write.csv(checkme, "/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/checkme.csv", row.names=TRUE)
+> 
+> 
+> ### Read in appropriate Stan model
+> 
+> library(cmdstanr)
+> 
+> mod <- cmdstan_model("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/BBGWAS-ord-association_gon.stan")
+
+R version 4.2.2 (2022-10-31) -- "Innocent and Trusting"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ### Pipeline for ordinal GWAS model
+> 
+> library("vcfR")
+> 
+> #genotype
+> 
+> #USA
+> genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/USA_all.vcf.gz")
+Scanning file to determine attributes.
+File attributes:
+  meta lines: 29
+  header_line: 30
+  variant count: 53526
+  column count: 1110
+Meta line 29 read in.
+All meta lines processed.
+gt matrix initialized.
+Character matrix gt created.
+  Character matrix gt rows: 53526
+  Character matrix gt cols: 1110
+  skip: 0
+  nrows: 53526
+  row_num: 0
+Processed variant 1000Processed variant 2000Processed variant 3000Processed variant 4000Processed variant 5000Processed variant 6000Processed variant 7000Processed variant 8000Processed variant 9000Processed variant 10000Processed variant 11000Processed variant 12000Processed variant 13000Processed variant 14000Processed variant 15000Processed variant 16000Processed variant 17000Processed variant 18000Processed variant 19000Processed variant 20000Processed variant 21000Processed variant 22000Processed variant 23000Processed variant 24000Processed variant 25000Processed variant 26000Processed variant 27000Processed variant 28000Processed variant 29000Processed variant 30000Processed variant 31000Processed variant 32000Processed variant 33000Processed variant 34000Processed variant 35000Processed variant 36000Processed variant 37000Processed variant 38000Processed variant 39000Processed variant 40000Processed variant 41000Processed variant 42000Processed variant 43000Processed variant 44000Processed variant 45000Processed variant 46000Processed variant 47000Processed variant 48000Processed variant 49000Processed variant 50000Processed variant 51000Processed variant 52000Processed variant 53000Processed variant: 53526
+All variants processed
+> genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+
+R version 4.2.2 (2022-10-31) -- "Innocent and Trusting"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ### Pipeline for ordinal GWAS model
+> 
+> library("vcfR")
+> 
+> #genotype
+> 
+> #USA
+> genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/USA_all.vcf.gz")
+Scanning file to determine attributes.
+File attributes:
+  meta lines: 29
+  header_line: 30
+  variant count: 53526
+  column count: 1110
+Meta line 29 read in.
+All meta lines processed.
+gt matrix initialized.
+Character matrix gt created.
+  Character matrix gt rows: 53526
+  Character matrix gt cols: 1110
+  skip: 0
+  nrows: 53526
+  row_num: 0
+Processed variant 1000Processed variant 2000Processed variant 3000Processed variant 4000Processed variant 5000Processed variant 6000Processed variant 7000Processed variant 8000Processed variant 9000Processed variant 10000Processed variant 11000Processed variant 12000Processed variant 13000Processed variant 14000Processed variant 15000Processed variant 16000Processed variant 17000Processed variant 18000Processed variant 19000Processed variant 20000Processed variant 21000Processed variant 22000Processed variant 23000Processed variant 24000Processed variant 25000Processed variant 26000Processed variant 27000Processed variant 28000Processed variant 29000Processed variant 30000Processed variant 31000Processed variant 32000Processed variant 33000Processed variant 34000Processed variant 35000Processed variant 36000Processed variant 37000Processed variant 38000Processed variant 39000Processed variant 40000Processed variant 41000Processed variant 42000Processed variant 43000Processed variant 44000Processed variant 45000Processed variant 46000Processed variant 47000Processed variant 48000Processed variant 49000Processed variant 50000Processed variant 51000Processed variant 52000Processed variant 53000Processed variant: 53526
+All variants processed
+> genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> genotype <- t(genotype)
+> 
+> #UK
+> #genotype <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/genotype/variant_calls/UK_all.vcf.gz")
+> #genotype <- extract.gt(genotype, as.numeric = TRUE, IDtoRowNames = T)
+> #genotype <- t(genotype)
+> 
+> #missing2ref
+> genotype[is.na(genotype)] <- 0
+> 
+> #rename rows for later data sorting
+> genotype_rownames <- rownames(genotype)
+> genotype_rownames <- substring(genotype_rownames, 9)
+> rownames(genotype) <- genotype_rownames
+> 
+> 
+> # lineages
+> 
+> #USA
+> lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/lineages/poppunk_clusters_USA/poppunk_clusters_USA_clusters.csv")
+> #UK/Canada
+> #lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/poppunk_clusters_UK/poppunk_clusters_UK_clusters.csv")
+> 
+> 
+> # phenotype
+> phenotype <- read.csv("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/41564_2018_309_MOESM3_ESM.csv", header = TRUE)
+> colnames(phenotype) <- phenotype[1,]
+> phenotype <- phenotype[-1,]
+> 
+> #get only desired phenotype dataset
+> 
+> #index separate countries
+> USA <- which(phenotype[,1] == "USA")
+> #UK <- which(phenotype[,1] == "England")
+> #Canada <- which(phenotype[,1] == "Canada")
+> #UK_Canada <- c(UK, Canada)
+> 
+> #USA dataset
+> phenotype <- phenotype[USA,]
+> 
+> #UK/Canada dataset
+> #phenotype <- phenotype[UK_Canada,]
+> 
+> # choose which phenotype column (which antibiotic) you want to test
+> chosen_antibiotic <- 3
+> 
+> # Reorder samples in genotype & lineages file to match phenotype
+> # genotype samples from the non-desired phenotype dataset (USA or UK/Canada) will be removed
+> 
+> sample_index <- match(phenotype[,2], lineages[,1])
+> #there is one sample in the lineage data that's not in the phenotype data - remove it from lin
+> removethese <- which(is.na(sample_index))
+> phenotype <- phenotype[-removethese,]
+> #redo sample index and sort as usual
+> sample_index <- match(phenotype[,2], lineages[,1])
+> lineages <- lineages[sample_index,]
+> 
+> 
+> # Define V = number of variants, L = number of lineages, N = number of samples
+> L <- as.numeric(length(unique(lineages$Cluster)))
+> V <- as.numeric(ncol(genotype))
+> N <- as.numeric(nrow(phenotype))
+> K <- as.numeric(length(unique(phenotype[,chosen_antibiotic])))
+> 
+> # print for future reference
+> print(V)
+[1] 53526
+> print(L)
+[1] 1101
+> print(N)
+[1] 1101
+> print(K)
+[1] 12
+> 
+> # Check that the phenotypes are ordered correctly
+> ordered_categories <- sort(as.numeric(unique(phenotype[,chosen_antibiotic])))
+> print(ordered_categories)
+ [1]  0.030  0.060  0.125  0.250  0.500  1.000  2.000  4.000  8.000 16.000
+[11] 32.000 64.000
+> 
+> # Convert the chosen phenotype to its ordinal category
+> categorical_phenotype <- as.numeric(phenotype[,chosen_antibiotic])
+> for (i in 1:N) {
++   categorical_phenotype[i] <- which(ordered_categories == categorical_phenotype[i])
++ }
+> 
+> 
+> # Concat into one file (to check for correctness)
+> 
+> checkme <- cbind(rownames(genotype), genotype[,1], phenotype, categorical_phenotype, lineages, row.names = rownames(phenotype))
+> write.csv(checkme, "/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/checkme.csv", row.names=TRUE)
+> 
+> 
+> ### Read in appropriate Stan model
+> 
+> library(cmdstanr)
+> 
+> mod <- cmdstan_model("/nfs/research/jlees/jacqueline/gwas_datasets/gonorrhoeae/pipelines/BBGWAS-ord-association_gon.stan")
