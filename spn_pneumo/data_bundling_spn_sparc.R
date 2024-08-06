@@ -5,7 +5,7 @@ library("dplyr")
 
 ################################################### BUNDLE DATA
 
-# read in genotype
+# read in genotype 
 sparc_snps <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/sparc_snps.vcf.gz", verbose = TRUE)
 genotype <- extract.gt(sparc_snps, as.numeric = TRUE, IDtoRowNames = T)
 
