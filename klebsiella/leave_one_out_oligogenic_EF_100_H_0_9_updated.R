@@ -4,7 +4,7 @@
 library(cmdstanr)
 
 # read in genotype
-genotype <- read.delim("/nfs/research/jlees/jacqueline/gwas_data/klebsiella/genotype/genotype_pres_abs.txt")
+genotype <- read.delim("/nfs/research/jlees/jacqueline/gwas_data/klebsiella/Kpneu_MIC_prediction/data/genes/matrix_and_lineages/genes_presence_absence.txt")
 rownames(genotype) <- genotype[,1]
 genotype <- genotype[,-1]
 genotype <- t(genotype)
@@ -14,8 +14,6 @@ lineages <- read.delim("/nfs/research/jlees/jacqueline/gwas_data/klebsiella/line
 
 # read in phenotype
 phenotype <- read.delim("/nfs/research/jlees/jacqueline/gwas_data/klebsiella/phenotypes/simul_oligogenic_EF_100.0_herit_0.9_traitprev_0.1.phen", sep = " ", header = FALSE)
-#scale phenotype
-#phenotype[,3] <- as.data.frame(scale(phenotype[,3], center = 0, scale = FALSE))
 
 # Reorder samples in lineages file to match genotype and phenotype
 sample_index <- match(phenotype[,2], lineages[,1])

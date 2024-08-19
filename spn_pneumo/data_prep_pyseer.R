@@ -98,9 +98,21 @@ penicillin_mics$K <- replace(penicillin_mics$K, penicillin_mics$K==13, 5)
 # change phenotype header
 colnames(penicillin_mics) <- c("sample", "continuous")
 
+# add string to variant header so pyseer can run
+colnames(genotype) <- paste("var_", colnames(genotype), sep = "")
+
+# transpose to pyseer format
+genotype <- t(genotype)
+
+# turn row and column names to new row and column
+genotype <- as.data.frame(genotype)
+genotype <- cbind(rownames(genotype), genotype)
+genotype <- rbind(colnames(genotype), genotype)
+genotype[,1] <- c("variants", genotype[-1, 1])
+
 # export genotypes as Rtab
 write.table(genotype, file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/pyseer_data/genotypes.rtab", 
-            sep = "\t", col.names = T, row.names = T, quote = F)
+            sep = "\t", col.names = F, row.names = F, quote = F)
 
 # export phenotypes as tab separated
 write.table(penicillin_mics, file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/pyseer_data/phenotypes_pen_mic.txt", 

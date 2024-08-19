@@ -80,9 +80,15 @@ genotype <- genotype[,sample_index]
 # change phenotype header
 colnames(phenotype) <- c("sample", "continuous")
 
+# turn row and column names to new row and column
+genotype <- as.data.frame(genotype)
+genotype <- cbind(rownames(genotype), genotype)
+genotype <- rbind(colnames(genotype), genotype)
+genotype[,1] <- c("variants", genotype[-1, 1])
+
 # export genotypes as Rtab
-write.table(genotype, file = "/nfs/research/jlees/jacqueline/gwas_data/tuberculosis/pyseer_data/genotypes.Rtab", 
-            sep = "\t", col.names = T, row.names = T)
+write.table(genotype, file = "/nfs/research/jlees/jacqueline/gwas_data/tuberculosis/pyseer_data/genotypes.rtab", 
+            sep = "\t", col.names = F, row.names = F, quote = F)
 
 # export phenotypes as tab separated
 write.table(phenotype, file = "/nfs/research/jlees/jacqueline/gwas_data/tuberculosis/pyseer_data/phenotypes_rfb_mic.txt", 
@@ -93,4 +99,6 @@ write.table(phenotype, file = "/nfs/research/jlees/jacqueline/gwas_data/tubercul
 # export sample list
 write.table(phenotype[,1], file = "/nfs/research/jlees/jacqueline/gwas_data/tuberculosis/pyseer_data/sample_list.txt", 
             sep = "\t", 
-            col.names = F, row.names = F)
+            col.names = F, row.names = F,
+            quote = F)
+
