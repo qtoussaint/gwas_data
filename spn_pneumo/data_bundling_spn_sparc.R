@@ -639,16 +639,17 @@ cleaned_gwas_data <- list(phenotype = penicillin_mics$K,
 
 # save completed bundle, ready for gwas, to the appropriate folder
 # we use stan json format as other formats (such as RDump) aren't supported by cmdstan
-json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles", pattern = "spn_sparc_gwas_bundle_K_5_maf_0.05_")
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin", pattern = "spn_sparc_K_5_penicillin_maf_0.05_")
 cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
 
 # create index of variant positions
-index <- as.matrix(colnames(genotype))
-colnames(index) <- c("variant")
-write.csv(x = index,
-          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/spn_sparc_gwas_bundle_K_5_maf_0.05_associative_variant_index.csv")
+index <- as.numeric(as.matrix(colnames(genotype)))
+variant_pos <- as.numeric(sparc_snps@fix[,"POS"])[index] # REAL GENOME COORDINATES
+colnames(variant_pos) <- c("variant")
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/spn_sparc_K_5_penicillin_maf_0.05_associative_variant_index.csv")
 
-##################################### BINARY
+##################################### BINARY PENICILLIN
 
 # read in genotype 
 sparc_snps <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/sparc_snps.vcf.gz", verbose = TRUE)
@@ -766,7 +767,6 @@ write.csv(phen_test_w_samples, file = "/nfs/research/jlees/jacqueline/gwas_data/
 # read in genotype 
 sparc_snps <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/sparc_snps.vcf.gz", verbose = TRUE)
 genotype <- extract.gt(sparc_snps, as.numeric = TRUE, IDtoRowNames = T)
-variant_pos <- as.numeric(sparc_snps@fix[,"POS"])
 
 # read in lineages
 lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/lineages/database_clusters.csv")
