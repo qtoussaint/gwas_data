@@ -711,14 +711,15 @@ cleaned_gwas_data <- list(phenotype = phenotypes$binary,
 
 # save completed bundle, ready for gwas, to the appropriate folder
 # we use stan json format as other formats (such as RDump) aren't supported by cmdstan
-json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles", pattern = "spn_sparc_gwas_bundle_binary_maf_0.05_")
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin", pattern = "spn_sparc_binary_penicillin_maf_0.05_")
 cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
 
 # create index of variant positions
-index <- as.matrix(colnames(genotype))
-colnames(index) <- c("variant")
-write.csv(x = index,
-          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/spn_sparc_gwas_bundle_binary_maf_0.05_associative_variant_index.csv")
+index <- as.numeric(as.matrix(colnames(genotype)))
+variant_pos <- as.numeric(sparc_snps@fix[,"POS"])[index] # REAL GENOME COORDINATES
+colnames(variant_pos) <- c("variant")
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/spn_sparc_binary_penicillin_maf_0.05_associative_variant_index.csv")
 
 ################################################### CREATE PREDICTIVE BUNDLE
 
@@ -758,6 +759,117 @@ cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
 
 # write file with test phenotypes (ground truth)
 write.csv(phen_test_w_samples, file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/spn_sparc_gwas_binary_maf_0.05_predictive_test_phenotypes.csv")
+
+
+##################################### BINARY TRIMETHOPRIM
+
+# read in genotype 
+sparc_snps <- read.vcfR("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/sparc_snps.vcf.gz", verbose = TRUE)
+genotype <- extract.gt(sparc_snps, as.numeric = TRUE, IDtoRowNames = T)
+variant_pos <- as.numeric(sparc_snps@fix[,"POS"])
+
+# read in lineages
+lineages <- read.csv("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/lineages/database_clusters.csv")
+
+# read in phenotype data
+phenotypes <- read.delim("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/phenotype/sparc_metadata.csv", sep = ",")
+phenotypes <- phenotypes[,c("Lane.name", "Trimethoprim.MIC..ug.mL.")]
+colnames(phenotypes) <- c("samples", "MIC")
+
+print(unique(phenotypes$MIC))
+
+### from EUCAST 2025 guidelines for trimethoprim in S. pnuemoniae (R is >=2, S is <=1, units mg/L)
+
+# clean duplicate values and remove symbols
+phenotypes$MIC <- replace(phenotypes$MIC, phenotypes$MIC==">2.00", 2)
+phenotypes$MIC <- replace(phenotypes$MIC, phenotypes$MIC=="<=0.25", 0.25)
+phenotypes$MIC <- replace(phenotypes$MIC, phenotypes$MIC==">32", 32)
+### "/" format does not indicate a fraction, but rather two antibiotics given to a patient at once
+# the first number is the MIC for the reported antibiotic (here, trimethoprim)
+phenotypes$MIC <- replace(phenotypes$MIC, phenotypes$MIC=="4/76", 4)
+phenotypes$MIC <- replace(phenotypes$MIC, phenotypes$MIC==">4/76", 4)
+phenotypes$MIC <- replace(phenotypes$MIC, phenotypes$MIC=="0.25/4", 0.25)
+phenotypes$MIC <- replace(phenotypes$MIC, phenotypes$MIC=="0.5/9.", 0.5)
+phenotypes$MIC <- replace(phenotypes$MIC, phenotypes$MIC=="0.12/2", 0.12)
+phenotypes$MIC <- replace(phenotypes$MIC, phenotypes$MIC=="1/19", 1)
+phenotypes$MIC <- replace(phenotypes$MIC, phenotypes$MIC=="<0.06/", 0.06)
+phenotypes$MIC <- replace(phenotypes$MIC, phenotypes$MIC=="2/38", 2)
+
+sort(unique(phenotypes$MIC))
+
+phenotypes$MIC <- as.numeric(phenotypes$MIC)
+
+# make binary based on EUCAST
+phenotypes$MIC[which(phenotypes$MIC <= 1)] <- 0
+phenotypes$MIC[which(phenotypes$MIC >= 2)] <- 1
+phenotypes <- phenotypes[-which(phenotypes$MIC %in% c(1,0) == FALSE),]
+colnames(phenotypes) <- c("samples", "binary")
+
+# ensure order/number of samples matches between these 3 data sets
+# sort/filter those that dont
+
+index <- match(dimnames(genotype)[[2]], phenotypes$samples)
+phenotypes <- phenotypes[index,]
+
+phenotypes <- phenotypes[-which(is.na(phenotypes$binary)),]
+
+index <- match(phenotypes$samples, dimnames(genotype)[[2]])
+genotype <- genotype[,index]
+
+index <- match(dimnames(genotype)[[2]], lineages$Taxon)
+lineages <- lineages[index,]
+
+# transpose genotype data (need samples in rows and variants in columns)
+genotype <- t(genotype)
+
+# find and replace missing data in genotype file
+# will use change all missing SNPs to 0
+genotype[is.na(genotype)] <- 0
+
+# filter for MAF>0.05 (if desired)
+small_maf <- which((colSums(genotype)/nrow(genotype))<0.05)
+genotype <- genotype[,-small_maf]
+
+# make numeric
+phenotypes$binary <- as.numeric(phenotypes$binary)
+
+# switch order of columns and rename
+phenotypes <- data.frame(ID=phenotypes$sample, binary=phenotypes$binary)
+
+# combine into one file (to check for correctness)
+checkme <- cbind(genotype[,1], phenotypes, lineages)
+
+# define V = number of variants, L = number of lineages, N = number of samples
+V <- as.numeric(ncol(genotype))
+L <- as.numeric(max(lineages$Cluster))
+N <- as.numeric(nrow(phenotypes))
+
+print(V)
+print(L)
+print(N)
+
+# convert lineages into one-hot format
+lineages <- model.matrix(Taxon~as.factor(Cluster), lineages)[,-1]
+
+# make data into file
+cleaned_gwas_data <- list(phenotype = phenotypes$binary,
+                          variant_matrix = genotype,
+                          lineage_matrix = lineages,
+                          N=N,
+                          V=V,
+                          L=L)
+
+# save completed bundle, ready for gwas, to the appropriate folder
+# we use stan json format as other formats (such as RDump) aren't supported by cmdstan
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/trimethoprim/", pattern = "spn_sparc_binary_trimethoprim_maf_0.05_")
+cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
+
+# create index of variant positions
+index <- as.numeric(as.matrix(colnames(genotype)))
+variant_pos <- as.numeric(sparc_snps@fix[,"POS"])[index] # REAL GENOME COORDINATES
+colnames(variant_pos) <- c("variant")
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/trimethoprim/spn_sparc_binary_trimethoprim_maf_0.05_associative_variant_index.csv")
 
 ##################################### CONTINUOUS
 

@@ -15,7 +15,7 @@ path=/nfs/research/jlees/jacqueline/gwas_data/tuberculosis/pyseer_data
 #similarity_pyseer --pres $path/genotypes.rtab $path/sample_list.txt > $path/genotype_kinship.tsv
 
 # get phylogeny similarity matrix from parsnp tree
-python scripts/phylogeny_distance.py --lmm trees/parnsp/parsnp.tree > phylogeny_similarity.tsv
+python scripts/phylogeny_distance.py --lmm $path/trees/parnsp/parsnp.tree > $path/phylogeny_similarity.tsv
 
 # run pyseer (fast LMM)
 pyseer --lmm --phenotypes $path/phenotypes_rfb_mic.txt --pres $path/genotypes.rtab --similarity $path/phylogeny_similarity.tsv --output-patterns $path/snp_patterns.txt --cpu 16 --continuous > $path/rfb_mic_snps.txt
