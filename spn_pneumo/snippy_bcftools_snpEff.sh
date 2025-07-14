@@ -74,45 +74,85 @@ cd $outdir
 
 ### MULTIALLELIC WITH MAF=0.05 INCL MODIFIER-ONLY SITES, MULTIALLELIC WITH MAF=0.05 AND !!! NO !!! MODIFIER-ONLY SITES
 
-bcftools filter -e'INFO/MAF<0.05' snps_snippy_maf01_multiallelic.vcf.gz > snps_snippy_maf05_multiallelic.vcf.gz
+#bcftools index snps_snippy_maf01_multiallelic.vcf.gz
+#bcftools filter -e'INFO/MAF<0.05' snps_snippy_maf01_multiallelic.vcf.gz -Oz > snps_snippy_maf05_multiallelic.vcf.gz
+#bcftools index snps_snippy_maf05_multiallelic.vcf.gz
 
 # unzip
-gunzip -c snps_snippy_maf05_multiallelic.vcf.gz > snps_snippy_maf05_multiallelic_unzip.vcf
+#gunzip -c snps_snippy_maf05_multiallelic.vcf.gz > snps_snippy_maf05_multiallelic_unzip.vcf
 
 # field extraction with snpEff
-cat snps_snippy_maf05_multiallelic_unzip.vcf | /hps/software/users/jlees/jacqueline/pkgs/snpsift-5.2-hdfd78af_0/share/snpsift-5.2-0/scripts/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" > fields_all_maf05_multiallelic.txt
-cat snps_snippy_maf05_multiallelic_unzip.vcf |  /hps/software/users/jlees/jacqueline/pkgs/snpsift-5.2-hdfd78af_0/share/snpsift-5.2-0/scripts/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" | sed '/MODIFIER/d' > fields_filtered_maf05_multiallelic.txt
+#cat snps_snippy_maf05_multiallelic_unzip.vcf | /hps/software/users/jlees/jacqueline/pkgs/snpsift-5.2-hdfd78af_0/share/snpsift-5.2-0/scripts/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" > fields_all_maf05_multiallelic.txt
+#cat snps_snippy_maf05_multiallelic_unzip.vcf |  /hps/software/users/jlees/jacqueline/pkgs/snpsift-5.2-hdfd78af_0/share/snpsift-5.2-0/scripts/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" | sed '/MODIFIER/d' > fields_filtered_maf05_multiallelic.txt
 
 # extract presence/absence matrix with biallelic (no 2,3,4+ allele markings, just 0 or 1)
 # probably best in case snippy annotations aren't as good and end up with many low-frequency variants
-bcftools query -f '%CHROM\_%POS\_%REF\_%ALT[\t%GT]\n' snps_snippy_maf05_multiallelic.vcf.gz > genotype_maf05_multiallelic_tmp.tsv
+#bcftools query -f '%CHROM\_%POS\_%REF\_%ALT[\t%GT]\n' snps_snippy_maf05_multiallelic.vcf.gz > genotype_maf05_multiallelic_tmp.tsv
 
-awk '{
-    for (i=2; i<=NF; i++) {
-        if ($i == "0" || $i == "0") {
-            $i = 0;
-        } else {
-            $i = 1;
-        }
-    }
-    print
-}' genotype_maf05_multiallelic_tmp.tsv > genotype_maf05_multiallelic_tmp2.tsv
+#awk '{
+#    for (i=2; i<=NF; i++) {
+#        if ($i == "0" || $i == "0") {
+#            $i = 0;
+#        } else {
+#            $i = 1;
+#        }
+#    }
+#    print
+#}' genotype_maf05_multiallelic_tmp.tsv > genotype_maf05_multiallelic_tmp2.tsv
 
 # get header with samples
-bcftools query -l snps_snippy_maf05_multiallelic.vcf.gz > samples.txt
-echo -e "CHROM\_POS\_REF\_ALT$(awk '{printf "\t%s", $0}' samples.txt)" > header.tsv
-cat header.tsv genotype_maf05_multiallelic_tmp2.tsv > genotype_maf05_multiallelic.tsv
+#bcftools query -l snps_snippy_maf05_multiallelic.vcf.gz > samples.txt
+#echo -e "CHROM\_POS\_REF\_ALT$(awk '{printf "\t%s", $0}' samples.txt)" > header.tsv
+#cat header.tsv genotype_maf05_multiallelic_tmp2.tsv > genotype_maf05_multiallelic.tsv
 
 # NOW FILTER OUT MODIFIER-ONLY VARIANTS
 
 # make bed file that only contains positions with at least one non-modifier variant 
-awk 'NR>1 {print "Chromosome", $1}' fields_filtered_maf05_multiallelic.txt > positions_filtered_maf05_multiallelic.bed
+#awk 'NR>1 {print "Chromosome\t"$1"\t"$1}' fields_filtered_maf05_multiallelic.txt > positions_filtered_maf05_multiallelic.bed # use snp as both start and end pos
+#bgzip positions_filtered_maf05_multiallelic.bed # bgzip bedfile
+#tabix -s 1 -b 2 -e 3 positions_filtered_maf05_multiallelic.bed.gz # index bedfile
 
 # filter vcf based on this bed
-bcftools view -T positions_filtered_maf05_multiallelic.bed snps_snippy_maf05_multiallelic.vcf.gz > snps_snippy_maf05_NOMODIFIERS_multiallelic.vcf.gz
+#bcftools view -T positions_filtered_maf05_multiallelic.bed.gz snps_snippy_maf05_multiallelic.vcf.gz -Oz > snps_snippy_maf05_NOMODIFIERS_multiallelic.vcf.gz
+#bcftools index snps_snippy_maf05_NOMODIFIERS_multiallelic.vcf.gz
 
 # make genotype matrix as before
-bcftools query -f '%CHROM\_%POS\_%REF\_%ALT[\t%GT]\n' snps_snippy_maf05_NOMODIFIERS_multiallelic.vcf.gz > genotype_maf05_NOMODIFIERS_multiallelic_tmp.tsv
+#bcftools query -f '%CHROM\_%POS\_%REF\_%ALT[\t%GT]\n' snps_snippy_maf05_NOMODIFIERS_multiallelic.vcf.gz > genotype_maf05_NOMODIFIERS_multiallelic_tmp.tsv
+
+#awk '{
+#    for (i=2; i<=NF; i++) {
+#        if ($i == "0" || $i == "0") {
+#            $i = 0;
+#        } else {
+#            $i = 1;
+#        }
+#    }
+#    print
+#}' genotype_maf05_NOMODIFIERS_multiallelic_tmp.tsv > genotype_maf05_NOMODIFIERS_multiallelic_tmp2.tsv
+
+# get header with samples
+#bcftools query -l snps_snippy_maf05_NOMODIFIERS_multiallelic.vcf.gz > samples.txt
+#echo -e "CHROM\_POS\_REF\_ALT$(awk '{printf "\t%s", $0}' samples.txt)" > header.tsv
+#cat header.tsv genotype_maf05_NOMODIFIERS_multiallelic_tmp2.tsv > genotype_maf05_NOMODIFIERS_multiallelic.tsv
+
+# FILTER 'LOW' IMPACT VARIANTS (SYNONYMOUS/SILENT) AS WELL
+
+# note to self: might see marginal improvements in filtering with HWE using -M 2: https://www.normalesup.org/~glouvel/blog/pre-filtering-variants-from-vcfs-switching-to-bcftools/
+
+gunzip -c snps_snippy_maf05_multiallelic.vcf.gz > snps_snippy_maf05_multiallelic_unzip.vcf
+cat snps_snippy_maf05_multiallelic_unzip.vcf |  /hps/software/users/jlees/jacqueline/pkgs/snpsift-5.2-hdfd78af_0/share/snpsift-5.2-0/scripts/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" | sed '/MODIFIER/d' |  sed '/LOW/d' > fields_filtered_maf05_NOMOD_NOSYNON_multiallelic.txt
+
+# make bed file that only contains positions with at least one non-low-impact, non-modifier variant 
+awk 'NR>1 {print "Chromosome\t"$1"\t"$1}' fields_filtered_maf05_NOMOD_NOSYNON_multiallelic.txt > positions_filtered_maf05_NOMOD_NOSYN_multiallelic.bed # use snp as both start and end pos
+bgzip positions_filtered_maf05_NOMOD_NOSYN_multiallelic.bed # bgzip bedfile
+tabix -s 1 -b 2 -e 3 positions_filtered_maf05_NOMOD_NOSYN_multiallelic.bed.gz # index bedfile
+
+# filter vcf based on this bed
+bcftools view -T positions_filtered_maf05_NOMOD_NOSYN_multiallelic.bed.gz snps_snippy_maf05_multiallelic.vcf.gz -Oz > snps_snippy_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic.vcf.gz
+bcftools index snps_snippy_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic.vcf.gz
+
+# make genotype matrix as before
+bcftools query -f '%CHROM\_%POS\_%REF\_%ALT[\t%GT]\n' snps_snippy_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic.vcf.gz > genotype_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic_tmp.tsv
 
 awk '{
     for (i=2; i<=NF; i++) {
@@ -123,14 +163,12 @@ awk '{
         }
     }
     print
-}' genotype_maf05_NOMODIFIERS_multiallelic_tmp.tsv > genotype_maf05_NOMODIFIERS_multiallelic_tmp2.tsv
+}' genotype_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic_tmp.tsv > genotype_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic_tmp2.tsv
 
 # get header with samples
-bcftools query -l snps_snippy_maf05_NOMODIFIERS_multiallelic.vcf.gz > samples.txt
+bcftools query -l snps_snippy_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic.vcf.gz > samples.txt
 echo -e "CHROM\_POS\_REF\_ALT$(awk '{printf "\t%s", $0}' samples.txt)" > header.tsv
-cat header.tsv genotype_maf05_NOMODIFIERS_multiallelic_tmp2.tsv > genotype_maf05_NOMODIFIERS_multiallelic.tsv
-
-# FILTER 'LOW' IMPACT (I THINK THIS ONLY MEANS SYNONYMOUS?) VARIANTS AS WELL
+cat header.tsv genotype_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic_tmp2.tsv > genotype_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic.tsv
 
 
 
@@ -176,3 +214,8 @@ rm genotype_maf05_multiallelic_tmp2.tsv
 rm positions_filtered_maf05_multiallelic.bed
 rm genotype_maf05_NOMODIFIERS_multiallelic_tmp.tsv
 rm genotype_maf05_NOMODIFIERS_multiallelic_tmp2.tsv
+rm positions_filtered_maf05_multiallelic.bed.gz
+rm genotype_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic_tmp.tsv
+rm genotype_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic_tmp2.tsv
+rm positions_filtered_maf05_NOMOD_NOSYN_multiallelic.bed.gz
+rm positions_filtered_maf05_NOMOD_NOSYN_multiallelic.bed.gz.tbi
