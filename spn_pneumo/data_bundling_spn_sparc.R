@@ -809,6 +809,1077 @@ variant_pos <- as.data.frame(variant_pos, as.matrix(colnames(genotype)))
 write.csv(x = variant_pos,
           file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/spn_sparc_K_5_penicillin_maf_0.01_multiallelic_sublineages_associative_variant_index.csv")
 
+
+
+##################################### 5 MIC CATEGORIES (new genotyping -- MAF=0.05, mulitallelic, WITH SUBCLUSTERING -- replace with coarse clusters)
+
+# read in genotype 
+genotype <- read.delim(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/genotype_maf05_multiallelic.tsv", 
+                       sep = "", header = F, row.names = 1)
+colnames(genotype) <- genotype[1,]
+genotype <- genotype[-1,]
+colnames(genotype) <- sub('^results_', '', colnames(genotype)) # fix colnames
+genotype[] <- lapply(genotype, function(x) as.integer(as.character(x))) # convert to integers
+
+# read in lineages and sublineages from poppipe
+lineages <- read.csv(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/lineages/sublineages_from_poppipe/min_cluster_3/all_clusters.txt")
+sublineages <- lineages[,c(1,3)]
+lineages <- lineages[,c(1,2)]
+
+# replace NAs with coarse cluster designation
+# appended zeros to avoid accidentally assigning a to a subcluster that already exists
+NA_sublin <- which(is.na(sublineages[,2]))
+replacement <- as.numeric(paste(lineages[NA_sublin,2], "0000", sep = ""))
+sublineages[NA_sublin,2] <- replacement
+
+# read in phenotype data
+phenotypes <- read.csv("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/phenotype/sparc_metadata.csv", na.strings = "")
+
+# select desired phenotype (here it's benzylpenicillin MICs)
+penicillin_mics <- as.data.frame(phenotypes$Benzylpenicillin.MIC..ug.mL.)
+penicillin_mics <- data.frame(MIC=penicillin_mics[,1], ID=phenotypes$Lane.name)
+penicillin_mics <- penicillin_mics[complete.cases(penicillin_mics),]
+
+### ensure order/number of samples matches between these 3 data sets:
+
+# obtain only samples present in all dataframes
+common_ids <- Reduce(intersect, list(penicillin_mics$ID, dimnames(genotype)[[2]], lineages$Taxon, sublineages$Taxon))
+
+# set one as the reference order
+reference_order <- penicillin_mics$ID[penicillin_mics$ID %in% common_ids]
+
+# sort and filter
+penicillin_mics <- penicillin_mics[penicillin_mics$ID %in% common_ids, ]
+
+lineages <- lineages[lineages$Taxon %in% common_ids, ]
+lineages <- lineages[match(reference_order, lineages$Taxon), ]
+
+sublineages <- sublineages[sublineages$Taxon %in% common_ids, ]
+sublineages <- sublineages[match(reference_order, sublineages$Taxon), ]
+
+# transpose genotype data (need samples in rows and variants in columns)
+genotype <- t(genotype)
+genotype <- genotype[dimnames(genotype)[[1]] %in% common_ids, ]
+genotype <- genotype[match(reference_order, dimnames(genotype)[[1]]), ]
+
+# Clean up the MIC values
+
+# show original values
+print("True MIC values:")
+print(sort(unique(penicillin_mics$MIC)))
+
+# clean duplicate values and remove symbols
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC==">4.00", 4)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC==">4", 4)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<=0.03", 0.03)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<0.03", 0.03)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<0.016", 0.016)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<.016", 0.016)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="< 0.01", 0.01)
+
+# make numeric
+penicillin_mics$MIC <- as.numeric(penicillin_mics$MIC)
+
+# test different bin breaks and make the cuts
+# 4 bins (from 26 total)
+MICs <- sort(unique(penicillin_mics$MIC))
+print(unique(cut(MICs, breaks=c(0, 0.032, 0.065, 0.2, 2, 6))))
+
+# cut according to give breakpoints and add as separate column
+penicillin_complete <- penicillin_mics %>% mutate(MIC_factor = cut(penicillin_mics$MIC, breaks=c(0, 0.032, 0.065, 0.2, 2, 6)))
+
+# replace factors with characters
+penicillin_complete$MIC_factor <- print(penicillin_complete$MIC_factor)
+
+# create sorted vector of all MIC bins
+MIC_intervals <- as.character(sort(unique(penicillin_complete$MIC_factor)))
+
+# convert MIC to sample,s ordinal category (1:24) in resistances
+for (i in 1:nrow(penicillin_complete)) {
+  penicillin_complete$MIC_ord_category[i] <- which(MIC_intervals == penicillin_complete$MIC_factor[i])
+}
+
+# switch order of columns and rename
+penicillin_mics <- data.frame(ID=penicillin_complete$ID, K=penicillin_complete$MIC_ord_category)
+
+ggplot(data = penicillin_mics, aes(x = K)) +
+  geom_bar()
+
+# combine into one file (to check for correctness)
+checkme <- cbind(genotype[,1], penicillin_mics, lineages, sublineages)
+
+# define V = number of variants, L = number of lineages, S = number of sublineages, N = number of samples
+# define V = number of variants, L = number of lineages, N = number of samples
+V <- as.numeric(ncol(genotype))
+L <- as.numeric(length(unique(lineages$Strain)))
+N <- as.numeric(nrow(penicillin_mics))
+K <- as.numeric(length(unique(penicillin_mics$K)))
+S <- as.numeric(length(unique(sublineages$Subcluster_1)))
+
+# convert coarse lineages into one-hot format
+lineages <- model.matrix(Taxon~as.factor(Strain), lineages)[,-1]
+
+# convert fine lineages into one-hot format
+sublineages <- model.matrix(Taxon~as.factor(Subcluster_1), sublineages)[,-1]
+
+# make data into file
+cleaned_gwas_data <- list(phenotype = penicillin_mics$K,
+                          variant_matrix = genotype,
+                          lineage_matrix = lineages,
+                          sublineage_matrix = sublineages,
+                          N=N,
+                          V=V,
+                          L=L,
+                          S=S,
+                          K=K)
+
+# save completed bundle, ready for gwas, to the appropriate folder
+# we use stan json format as other formats (such as RDump) aren't supported by cmdstan
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin", pattern = "spn_sparc_K_5_penicillin_maf_0.05_multiallelic_sublineages_")
+cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
+
+# create index of variant positions
+index <- as.matrix(colnames(genotype))
+index <- sub('^Chromosome_', '', index)
+variant_pos <- (sub("_[^_]+$", "", index))
+variant_pos <- as.numeric(sub("_[^_]+$", "", variant_pos))
+variant_pos <- as.data.frame(variant_pos, as.matrix(colnames(genotype)))
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/spn_sparc_K_5_penicillin_maf_0.05_multiallelic_sublineages_associative_variant_index.csv")
+
+
+
+##################################### 5 MIC CATEGORIES (new genotyping -- MAF=0.05, NO MODIFIERS, mulitallelic, WITH SUBCLUSTERING -- replace with coarse clusters)
+
+# read in genotype 
+genotype <- read.delim(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/genotype_maf05_NOMODIFIERS_multiallelic.tsv", 
+                       sep = "", header = F, row.names = 1)
+colnames(genotype) <- genotype[1,]
+genotype <- genotype[-1,]
+colnames(genotype) <- sub('^results_', '', colnames(genotype)) # fix colnames
+genotype[] <- lapply(genotype, function(x) as.integer(as.character(x))) # convert to integers
+
+# read in lineages and sublineages from poppipe
+lineages <- read.csv(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/lineages/sublineages_from_poppipe/min_cluster_3/all_clusters.txt")
+sublineages <- lineages[,c(1,3)]
+lineages <- lineages[,c(1,2)]
+
+# replace NAs with coarse cluster designation
+# appended zeros to avoid accidentally assigning a to a subcluster that already exists
+NA_sublin <- which(is.na(sublineages[,2]))
+replacement <- as.numeric(paste(lineages[NA_sublin,2], "0000", sep = ""))
+sublineages[NA_sublin,2] <- replacement
+
+# read in phenotype data
+phenotypes <- read.csv("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/phenotype/sparc_metadata.csv", na.strings = "")
+
+# select desired phenotype (here it's benzylpenicillin MICs)
+penicillin_mics <- as.data.frame(phenotypes$Benzylpenicillin.MIC..ug.mL.)
+penicillin_mics <- data.frame(MIC=penicillin_mics[,1], ID=phenotypes$Lane.name)
+penicillin_mics <- penicillin_mics[complete.cases(penicillin_mics),]
+
+### ensure order/number of samples matches between these 3 data sets:
+
+# obtain only samples present in all dataframes
+common_ids <- Reduce(intersect, list(penicillin_mics$ID, dimnames(genotype)[[2]], lineages$Taxon, sublineages$Taxon))
+
+# set one as the reference order
+reference_order <- penicillin_mics$ID[penicillin_mics$ID %in% common_ids]
+
+# sort and filter
+penicillin_mics <- penicillin_mics[penicillin_mics$ID %in% common_ids, ]
+
+lineages <- lineages[lineages$Taxon %in% common_ids, ]
+lineages <- lineages[match(reference_order, lineages$Taxon), ]
+
+sublineages <- sublineages[sublineages$Taxon %in% common_ids, ]
+sublineages <- sublineages[match(reference_order, sublineages$Taxon), ]
+
+# transpose genotype data (need samples in rows and variants in columns)
+genotype <- t(genotype)
+genotype <- genotype[dimnames(genotype)[[1]] %in% common_ids, ]
+genotype <- genotype[match(reference_order, dimnames(genotype)[[1]]), ]
+
+# Clean up the MIC values
+
+# show original values
+print("True MIC values:")
+print(sort(unique(penicillin_mics$MIC)))
+
+# clean duplicate values and remove symbols
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC==">4.00", 4)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC==">4", 4)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<=0.03", 0.03)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<0.03", 0.03)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<0.016", 0.016)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<.016", 0.016)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="< 0.01", 0.01)
+
+# make numeric
+penicillin_mics$MIC <- as.numeric(penicillin_mics$MIC)
+
+# test different bin breaks and make the cuts
+# 4 bins (from 26 total)
+MICs <- sort(unique(penicillin_mics$MIC))
+print(unique(cut(MICs, breaks=c(0, 0.032, 0.065, 0.2, 2, 6))))
+
+# cut according to give breakpoints and add as separate column
+penicillin_complete <- penicillin_mics %>% mutate(MIC_factor = cut(penicillin_mics$MIC, breaks=c(0, 0.032, 0.065, 0.2, 2, 6)))
+
+# replace factors with characters
+penicillin_complete$MIC_factor <- print(penicillin_complete$MIC_factor)
+
+# create sorted vector of all MIC bins
+MIC_intervals <- as.character(sort(unique(penicillin_complete$MIC_factor)))
+
+# convert MIC to sample,s ordinal category (1:24) in resistances
+for (i in 1:nrow(penicillin_complete)) {
+  penicillin_complete$MIC_ord_category[i] <- which(MIC_intervals == penicillin_complete$MIC_factor[i])
+}
+
+# switch order of columns and rename
+penicillin_mics <- data.frame(ID=penicillin_complete$ID, K=penicillin_complete$MIC_ord_category)
+
+ggplot(data = penicillin_mics, aes(x = K)) +
+  geom_bar()
+
+# combine into one file (to check for correctness)
+checkme <- cbind(genotype[,1], penicillin_mics, lineages, sublineages)
+
+# define V = number of variants, L = number of lineages, S = number of sublineages, N = number of samples
+# define V = number of variants, L = number of lineages, N = number of samples
+V <- as.numeric(ncol(genotype))
+L <- as.numeric(length(unique(lineages$Strain)))
+N <- as.numeric(nrow(penicillin_mics))
+K <- as.numeric(length(unique(penicillin_mics$K)))
+S <- as.numeric(length(unique(sublineages$Subcluster_1)))
+
+# convert coarse lineages into one-hot format
+lineages <- model.matrix(Taxon~as.factor(Strain), lineages)[,-1]
+
+# convert fine lineages into one-hot format
+sublineages <- model.matrix(Taxon~as.factor(Subcluster_1), sublineages)[,-1]
+
+# make data into file
+cleaned_gwas_data <- list(phenotype = penicillin_mics$K,
+                          variant_matrix = genotype,
+                          lineage_matrix = lineages,
+                          sublineage_matrix = sublineages,
+                          N=N,
+                          V=V,
+                          L=L,
+                          S=S,
+                          K=K)
+
+# save completed bundle, ready for gwas, to the appropriate folder
+# we use stan json format as other formats (such as RDump) aren't supported by cmdstan
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin", pattern = "spn_sparc_K_5_penicillin_maf_0.05_NOMODIFIERS_multiallelic_sublineages_")
+cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
+
+# create index of variant positions
+index <- as.matrix(colnames(genotype))
+index <- sub('^Chromosome_', '', index)
+variant_pos <- (sub("_[^_]+$", "", index))
+variant_pos <- as.numeric(sub("_[^_]+$", "", variant_pos))
+variant_pos <- as.data.frame(variant_pos, as.matrix(colnames(genotype)))
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/spn_sparc_K_5_penicillin_maf_0.05_NOMODIFIERS_multiallelic_sublineages_associative_variant_index.csv")
+
+
+
+
+
+
+##################################### CONTINUOUS (new genotyping -- MAF=0.05, NO MODIFIERS, mulitallelic, WITH SUBCLUSTERING -- replace with coarse clusters -- AND WITH PARENT_LIN VECTOR)
+
+# read in genotype 
+genotype <- read.delim(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/genotype_maf05_NOMODIFIERS_multiallelic.tsv", 
+                       sep = "", header = F, row.names = 1)
+colnames(genotype) <- genotype[1,]
+genotype <- genotype[-1,]
+colnames(genotype) <- sub('^results_', '', colnames(genotype)) # fix colnames
+genotype[] <- lapply(genotype, function(x) as.integer(as.character(x))) # convert to integers
+
+# read in lineages and sublineages from poppipe
+lineages <- read.csv(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/lineages/sublineages_from_poppipe/min_cluster_3/all_clusters.txt")
+sublineages <- lineages[,c(1,3)]
+lineages <- lineages[,c(1,2)]
+
+# replace NAs with coarse cluster designation
+# appended zeros to avoid accidentally assigning a to a subcluster that already exists
+NA_sublin <- which(is.na(sublineages[,2]))
+replacement <- as.numeric(paste(lineages[NA_sublin,2], "0000", sep = ""))
+sublineages[NA_sublin,2] <- replacement
+
+# read in phenotype data
+phenotypes <- read.csv("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/phenotype/sparc_metadata.csv", na.strings = "")
+
+# select desired phenotype (here it's benzylpenicillin MICs)
+penicillin_mics <- as.data.frame(phenotypes$Benzylpenicillin.MIC..ug.mL.)
+penicillin_mics <- data.frame(MIC=penicillin_mics[,1], ID=phenotypes$Lane.name)
+penicillin_mics <- penicillin_mics[complete.cases(penicillin_mics),]
+
+### ensure order/number of samples matches between these 3 data sets:
+
+# obtain only samples present in all dataframes
+common_ids <- Reduce(intersect, list(penicillin_mics$ID, dimnames(genotype)[[2]], lineages$Taxon, sublineages$Taxon))
+
+# set one as the reference order
+reference_order <- penicillin_mics$ID[penicillin_mics$ID %in% common_ids]
+
+# sort and filter
+penicillin_mics <- penicillin_mics[penicillin_mics$ID %in% common_ids, ]
+
+lineages <- lineages[lineages$Taxon %in% common_ids, ]
+lineages <- lineages[match(reference_order, lineages$Taxon), ]
+
+sublineages <- sublineages[sublineages$Taxon %in% common_ids, ]
+sublineages <- sublineages[match(reference_order, sublineages$Taxon), ]
+
+# transpose genotype data (need samples in rows and variants in columns)
+genotype <- t(genotype)
+genotype <- genotype[dimnames(genotype)[[1]] %in% common_ids, ]
+genotype <- genotype[match(reference_order, dimnames(genotype)[[1]]), ]
+
+# Clean up the MIC values
+
+# show original values
+print("True MIC values:")
+print(sort(unique(penicillin_mics$MIC)))
+
+# clean duplicate values and remove symbols
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC==">4.00", 4)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC==">4", 4)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<=0.03", 0.03)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<0.03", 0.03)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<0.016", 0.016)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<.016", 0.016)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="< 0.01", 0.01)
+
+# make numeric
+penicillin_mics$MIC <- as.numeric(penicillin_mics$MIC)
+
+# test different bin breaks and make the cuts
+# 4 bins (from 26 total)
+MICs <- sort(unique(penicillin_mics$MIC))
+
+penicillin_mics$MIC <- log2(penicillin_mics$MIC)
+
+# switch order of columns and rename
+penicillin_mics <- data.frame(ID=penicillin_complete$ID, K=penicillin_complete$MIC)
+
+ggplot(data = penicillin_mics, aes(x = K)) +
+  geom_bar()
+
+# combine into one file (to check for correctness)
+checkme <- cbind(genotype[,1], penicillin_mics, lineages, sublineages)
+
+# define V = number of variants, L = number of lineages, S = number of sublineages, N = number of samples
+V <- as.numeric(ncol(genotype))
+L <- as.numeric(length(unique(lineages$Strain)))
+N <- as.numeric(nrow(penicillin_mics))
+S <- as.numeric(length(unique(sublineages$Subcluster_1)))
+
+# convert coarse lineages into one-hot format
+lineages <- model.matrix(Taxon~as.factor(Strain), lineages)[,-1]
+
+# convert fine lineages into one-hot format
+sublineages <- model.matrix(Taxon~as.factor(Subcluster_1), sublineages)[,-1]
+
+# parent_lineage[k] gives the column index (in lineages) of the parent for sublineage k; it's also in one-hot format
+# we need this to fit the hierarchical model
+parent_lineage <- integer(ncol(sublineages))
+for (k in seq_len(ncol(sublineages))) {
+  sub_idx <- which(sublineages[, k] == 1)
+  lineage_counts <- colSums(lineages[sub_idx, , drop = FALSE])
+  parent_lineage[k] <- which.max(lineage_counts)
+}
+
+# make data into file
+cleaned_gwas_data <- list(phenotype = penicillin_mics$K,
+                          variant_matrix = genotype,
+                          lineage_matrix = lineages,
+                          sublineage_matrix = sublineages,
+                          parent_lineage = parent_lineage,
+                          N=N,
+                          V=V,
+                          L=L,
+                          S=S)
+
+# save completed bundle, ready for gwas, to the appropriate folder
+# we use stan json format as other formats (such as RDump) aren't supported by cmdstan
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin", pattern = "spn_sparc_CONT_penicillin_maf_0.05_NOMODIFIERS_multiallelic_sublineages_parentlin_")
+cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
+
+# create index of variant positions
+index <- as.matrix(colnames(genotype))
+index <- sub('^Chromosome_', '', index)
+variant_pos <- (sub("_[^_]+$", "", index))
+variant_pos <- as.numeric(sub("_[^_]+$", "", variant_pos))
+variant_pos <- as.data.frame(variant_pos, as.matrix(colnames(genotype)))
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/spn_sparc_CONT_penicillin_maf_0.05_NOMODIFIERS_multiallelic_sublineages_parentlin_associative_variant_index.csv")
+
+
+# in case we need it
+write.csv(x = parent_lineage,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/TEST_HIERARCHICAL_spn_sparc_K_5_penicillin_maf_0.05_NOMODIFIERS_multiallelic_sublineages_parent_lineages.csv")
+
+
+
+
+
+
+
+##################################### 5 MIC CATEGORIES (new genotyping -- MAF=0.05, NO MODIFIERS, mulitallelic, WITH SUBCLUSTERING -- replace with coarse clusters -- AND WITH PARENT_LIN VECTOR)
+
+# read in genotype 
+genotype <- read.delim(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/genotype_maf05_NOMODIFIERS_multiallelic.tsv", 
+                       sep = "", header = F, row.names = 1)
+colnames(genotype) <- genotype[1,]
+genotype <- genotype[-1,]
+colnames(genotype) <- sub('^results_', '', colnames(genotype)) # fix colnames
+genotype[] <- lapply(genotype, function(x) as.integer(as.character(x))) # convert to integers
+
+# read in lineages and sublineages from poppipe
+lineages <- read.csv(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/lineages/sublineages_from_poppipe/min_cluster_3/all_clusters.txt")
+sublineages <- lineages[,c(1,3)]
+lineages <- lineages[,c(1,2)]
+
+# replace NAs with coarse cluster designation
+# appended zeros to avoid accidentally assigning a to a subcluster that already exists
+NA_sublin <- which(is.na(sublineages[,2]))
+replacement <- as.numeric(paste(lineages[NA_sublin,2], "0000", sep = ""))
+sublineages[NA_sublin,2] <- replacement
+
+# read in phenotype data
+phenotypes <- read.csv("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/phenotype/sparc_metadata.csv", na.strings = "")
+
+# select desired phenotype (here it's benzylpenicillin MICs)
+penicillin_mics <- as.data.frame(phenotypes$Benzylpenicillin.MIC..ug.mL.)
+penicillin_mics <- data.frame(MIC=penicillin_mics[,1], ID=phenotypes$Lane.name)
+penicillin_mics <- penicillin_mics[complete.cases(penicillin_mics),]
+
+### ensure order/number of samples matches between these 3 data sets:
+
+# obtain only samples present in all dataframes
+common_ids <- Reduce(intersect, list(penicillin_mics$ID, dimnames(genotype)[[2]], lineages$Taxon, sublineages$Taxon))
+
+# set one as the reference order
+reference_order <- penicillin_mics$ID[penicillin_mics$ID %in% common_ids]
+
+# sort and filter
+penicillin_mics <- penicillin_mics[penicillin_mics$ID %in% common_ids, ]
+
+lineages <- lineages[lineages$Taxon %in% common_ids, ]
+lineages <- lineages[match(reference_order, lineages$Taxon), ]
+
+sublineages <- sublineages[sublineages$Taxon %in% common_ids, ]
+sublineages <- sublineages[match(reference_order, sublineages$Taxon), ]
+
+# transpose genotype data (need samples in rows and variants in columns)
+genotype <- t(genotype)
+genotype <- genotype[dimnames(genotype)[[1]] %in% common_ids, ]
+genotype <- genotype[match(reference_order, dimnames(genotype)[[1]]), ]
+
+# Clean up the MIC values
+
+# show original values
+print("True MIC values:")
+print(sort(unique(penicillin_mics$MIC)))
+
+# clean duplicate values and remove symbols
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC==">4.00", 4)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC==">4", 4)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<=0.03", 0.03)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<0.03", 0.03)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<0.016", 0.016)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<.016", 0.016)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="< 0.01", 0.01)
+
+# make numeric
+penicillin_mics$MIC <- as.numeric(penicillin_mics$MIC)
+
+# test different bin breaks and make the cuts
+# 4 bins (from 26 total)
+MICs <- sort(unique(penicillin_mics$MIC))
+print(unique(cut(MICs, breaks=c(0, 0.032, 0.065, 0.2, 2, 6))))
+
+# cut according to give breakpoints and add as separate column
+penicillin_complete <- penicillin_mics %>% mutate(MIC_factor = cut(penicillin_mics$MIC, breaks=c(0, 0.032, 0.065, 0.2, 2, 6)))
+
+# replace factors with characters
+penicillin_complete$MIC_factor <- print(penicillin_complete$MIC_factor)
+
+# create sorted vector of all MIC bins
+MIC_intervals <- as.character(sort(unique(penicillin_complete$MIC_factor)))
+
+# convert MIC to sample,s ordinal category (1:24) in resistances
+for (i in 1:nrow(penicillin_complete)) {
+  penicillin_complete$MIC_ord_category[i] <- which(MIC_intervals == penicillin_complete$MIC_factor[i])
+}
+
+# switch order of columns and rename
+penicillin_mics <- data.frame(ID=penicillin_complete$ID, K=penicillin_complete$MIC_ord_category)
+
+ggplot(data = penicillin_mics, aes(x = K)) +
+  geom_bar()
+
+# combine into one file (to check for correctness)
+checkme <- cbind(genotype[,1], penicillin_mics, lineages, sublineages)
+
+# define V = number of variants, L = number of lineages, S = number of sublineages, N = number of samples
+V <- as.numeric(ncol(genotype))
+L <- as.numeric(length(unique(lineages$Strain)))
+N <- as.numeric(nrow(penicillin_mics))
+K <- as.numeric(length(unique(penicillin_mics$K)))
+S <- as.numeric(length(unique(sublineages$Subcluster_1)))
+
+# convert coarse lineages into one-hot format
+lineages <- model.matrix(Taxon~as.factor(Strain), lineages)[,-1]
+
+# convert fine lineages into one-hot format
+sublineages <- model.matrix(Taxon~as.factor(Subcluster_1), sublineages)[,-1]
+
+# parent_lineage[k] gives the column index (in lineages) of the parent for sublineage k; it's also in one-hot format
+# we need this to fit the hierarchical model
+parent_lineage <- integer(ncol(sublineages))
+for (k in seq_len(ncol(sublineages))) {
+  sub_idx <- which(sublineages[, k] == 1)
+  lineage_counts <- colSums(lineages[sub_idx, , drop = FALSE])
+  parent_lineage[k] <- which.max(lineage_counts)
+}
+
+# make data into file
+cleaned_gwas_data <- list(phenotype = penicillin_mics$K,
+                          variant_matrix = genotype,
+                          lineage_matrix = lineages,
+                          sublineage_matrix = sublineages,
+                          parent_lineage = parent_lineage,
+                          N=N,
+                          V=V,
+                          L=L,
+                          S=S,
+                          K=K)
+
+# save completed bundle, ready for gwas, to the appropriate folder
+# we use stan json format as other formats (such as RDump) aren't supported by cmdstan
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin", pattern = "TEST_HIERARCHICAL_spn_sparc_K_5_penicillin_maf_0.05_NOMODIFIERS_multiallelic_sublineages_")
+cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
+
+# create index of variant positions
+index <- as.matrix(colnames(genotype))
+index <- sub('^Chromosome_', '', index)
+variant_pos <- (sub("_[^_]+$", "", index))
+variant_pos <- as.numeric(sub("_[^_]+$", "", variant_pos))
+variant_pos <- as.data.frame(variant_pos, as.matrix(colnames(genotype)))
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/TEST_HIERARCHICAL_spn_sparc_K_5_penicillin_maf_0.05_NOMODIFIERS_multiallelic_sublineages_associative_variant_index.csv")
+
+
+# in case we need it
+write.csv(x = parent_lineage,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/TEST_HIERARCHICAL_spn_sparc_K_5_penicillin_maf_0.05_NOMODIFIERS_multiallelic_sublineages_parent_lineages.csv")
+
+
+
+##################################### 5 MIC CATEGORIES (new genotyping -- MAF=0.05, NO MODIFIERS & NO SYNONYMOUS, multiallelic, WITH SUBCLUSTERING -- replace with coarse clusters)
+
+# read in genotype 
+genotype <- read.delim(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/genotype_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic.tsv", 
+                       sep = "", header = F, row.names = 1)
+colnames(genotype) <- genotype[1,]
+genotype <- genotype[-1,]
+colnames(genotype) <- sub('^results_', '', colnames(genotype)) # fix colnames
+genotype[] <- lapply(genotype, function(x) as.integer(as.character(x))) # convert to integers
+
+# read in lineages and sublineages from poppipe
+lineages <- read.csv(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/lineages/sublineages_from_poppipe/min_cluster_3/all_clusters.txt")
+sublineages <- lineages[,c(1,3)]
+lineages <- lineages[,c(1,2)]
+
+# replace NAs with coarse cluster designation
+# appended zeros to avoid accidentally assigning a to a subcluster that already exists
+NA_sublin <- which(is.na(sublineages[,2]))
+replacement <- as.numeric(paste(lineages[NA_sublin,2], "0000", sep = ""))
+sublineages[NA_sublin,2] <- replacement
+
+# read in phenotype data
+phenotypes <- read.csv("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/phenotype/sparc_metadata.csv", na.strings = "")
+
+# select desired phenotype (here it's benzylpenicillin MICs)
+penicillin_mics <- as.data.frame(phenotypes$Benzylpenicillin.MIC..ug.mL.)
+penicillin_mics <- data.frame(MIC=penicillin_mics[,1], ID=phenotypes$Lane.name)
+penicillin_mics <- penicillin_mics[complete.cases(penicillin_mics),]
+
+### ensure order/number of samples matches between these 3 data sets:
+
+# obtain only samples present in all dataframes
+common_ids <- Reduce(intersect, list(penicillin_mics$ID, dimnames(genotype)[[2]], lineages$Taxon, sublineages$Taxon))
+
+# set one as the reference order
+reference_order <- penicillin_mics$ID[penicillin_mics$ID %in% common_ids]
+
+# sort and filter
+penicillin_mics <- penicillin_mics[penicillin_mics$ID %in% common_ids, ]
+
+lineages <- lineages[lineages$Taxon %in% common_ids, ]
+lineages <- lineages[match(reference_order, lineages$Taxon), ]
+
+sublineages <- sublineages[sublineages$Taxon %in% common_ids, ]
+sublineages <- sublineages[match(reference_order, sublineages$Taxon), ]
+
+# transpose genotype data (need samples in rows and variants in columns)
+genotype <- t(genotype)
+genotype <- genotype[dimnames(genotype)[[1]] %in% common_ids, ]
+genotype <- genotype[match(reference_order, dimnames(genotype)[[1]]), ]
+
+# Clean up the MIC values
+
+# show original values
+print("True MIC values:")
+print(sort(unique(penicillin_mics$MIC)))
+
+# clean duplicate values and remove symbols
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC==">4.00", 4)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC==">4", 4)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<=0.03", 0.03)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<0.03", 0.03)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<0.016", 0.016)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="<.016", 0.016)
+penicillin_mics$MIC <- replace(penicillin_mics$MIC, penicillin_mics$MIC=="< 0.01", 0.01)
+
+# make numeric
+penicillin_mics$MIC <- as.numeric(penicillin_mics$MIC)
+
+# test different bin breaks and make the cuts
+# 4 bins (from 26 total)
+MICs <- sort(unique(penicillin_mics$MIC))
+print(unique(cut(MICs, breaks=c(0, 0.032, 0.065, 0.2, 2, 6))))
+
+# cut according to give breakpoints and add as separate column
+penicillin_complete <- penicillin_mics %>% mutate(MIC_factor = cut(penicillin_mics$MIC, breaks=c(0, 0.032, 0.065, 0.2, 2, 6)))
+
+# replace factors with characters
+penicillin_complete$MIC_factor <- print(penicillin_complete$MIC_factor)
+
+# create sorted vector of all MIC bins
+MIC_intervals <- as.character(sort(unique(penicillin_complete$MIC_factor)))
+
+# convert MIC to sample,s ordinal category (1:24) in resistances
+for (i in 1:nrow(penicillin_complete)) {
+  penicillin_complete$MIC_ord_category[i] <- which(MIC_intervals == penicillin_complete$MIC_factor[i])
+}
+
+# switch order of columns and rename
+penicillin_mics <- data.frame(ID=penicillin_complete$ID, K=penicillin_complete$MIC_ord_category)
+
+ggplot(data = penicillin_mics, aes(x = K)) +
+  geom_bar()
+
+# combine into one file (to check for correctness)
+checkme <- cbind(genotype[,1], penicillin_mics, lineages, sublineages)
+
+# define V = number of variants, L = number of lineages, S = number of sublineages, N = number of samples
+# define V = number of variants, L = number of lineages, N = number of samples
+V <- as.numeric(ncol(genotype))
+L <- as.numeric(length(unique(lineages$Strain)))
+N <- as.numeric(nrow(penicillin_mics))
+K <- as.numeric(length(unique(penicillin_mics$K)))
+S <- as.numeric(length(unique(sublineages$Subcluster_1)))
+
+# convert coarse lineages into one-hot format
+lineages <- model.matrix(Taxon~as.factor(Strain), lineages)[,-1]
+
+# convert fine lineages into one-hot format
+sublineages <- model.matrix(Taxon~as.factor(Subcluster_1), sublineages)[,-1]
+
+# make data into file
+cleaned_gwas_data <- list(phenotype = penicillin_mics$K,
+                          variant_matrix = genotype,
+                          lineage_matrix = lineages,
+                          sublineage_matrix = sublineages,
+                          N=N,
+                          V=V,
+                          L=L,
+                          S=S,
+                          K=K)
+
+# save completed bundle, ready for gwas, to the appropriate folder
+# we use stan json format as other formats (such as RDump) aren't supported by cmdstan
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin", pattern = "spn_sparc_K_5_penicillin_maf_0.05_NOMODIFIERS_NOSYNON_multiallelic_sublineages_")
+cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
+
+# create index of variant positions
+index <- as.matrix(colnames(genotype))
+index <- sub('^Chromosome_', '', index)
+variant_pos <- (sub("_[^_]+$", "", index))
+variant_pos <- as.numeric(sub("_[^_]+$", "", variant_pos))
+variant_pos <- as.data.frame(variant_pos, as.matrix(colnames(genotype)))
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/spn_sparc_K_5_penicillin_maf_0.05_NOMODIFIERS_NOSYNON_multiallelic_sublineages_associative_variant_index.csv")
+
+##################################### BINARY EUCAST (new genotyping -- MAF=0.05, mulitallelic, WITH SUBCLUSTERING -- replace with coarse clusters ++ ADD PARENT_LIN)
+
+# read in genotype 
+genotype <- read.delim(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/genotype_maf05_multiallelic.tsv", 
+                       sep = "", header = F, row.names = 1)
+colnames(genotype) <- genotype[1,]
+genotype <- genotype[-1,]
+colnames(genotype) <- sub('^results_', '', colnames(genotype)) # fix colnames
+genotype[] <- lapply(genotype, function(x) as.integer(as.character(x))) # convert to integers
+
+# read in lineages and sublineages from poppipe
+lineages <- read.csv(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/lineages/sublineages_from_poppipe/min_cluster_3/all_clusters.txt")
+sublineages <- lineages[,c(1,3)]
+lineages <- lineages[,c(1,2)]
+
+# replace NAs with coarse cluster designation
+# appended zeros to avoid accidentally assigning a to a subcluster that already exists
+NA_sublin <- which(is.na(sublineages[,2]))
+replacement <- as.numeric(paste(lineages[NA_sublin,2], "0000", sep = ""))
+sublineages[NA_sublin,2] <- replacement
+
+# read in phenotype data
+penicillin_mics <- read.csv("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/phenotype/sparc_penicillin_eucast_binary.csv", na.strings = "")
+
+### ensure order/number of samples matches between these 3 data sets:
+
+# obtain only samples present in all dataframes
+common_ids <- Reduce(intersect, list(penicillin_mics$ID, dimnames(genotype)[[2]], lineages$Taxon, sublineages$Taxon))
+
+# set one as the reference order
+reference_order <- penicillin_mics$ID[penicillin_mics$ID %in% common_ids]
+
+# sort and filter
+penicillin_mics <- penicillin_mics[penicillin_mics$ID %in% common_ids, ]
+
+lineages <- lineages[lineages$Taxon %in% common_ids, ]
+lineages <- lineages[match(reference_order, lineages$Taxon), ]
+
+sublineages <- sublineages[sublineages$Taxon %in% common_ids, ]
+sublineages <- sublineages[match(reference_order, sublineages$Taxon), ]
+
+# transpose genotype data (need samples in rows and variants in columns)
+genotype <- t(genotype)
+genotype <- genotype[dimnames(genotype)[[1]] %in% common_ids, ]
+genotype <- genotype[match(reference_order, dimnames(genotype)[[1]]), ]
+
+# combine into one file (to check for correctness)
+checkme <- cbind(genotype[,1], penicillin_mics, lineages, sublineages)
+
+# define V = number of variants, L = number of lineages, S = number of sublineages, N = number of samples
+# define V = number of variants, L = number of lineages, N = number of samples
+V <- as.numeric(ncol(genotype))
+L <- as.numeric(length(unique(lineages$Strain)))
+N <- as.numeric(nrow(penicillin_mics))
+S <- as.numeric(length(unique(sublineages$Subcluster_1)))
+
+# convert coarse lineages into one-hot format
+lineages <- model.matrix(Taxon~as.factor(Strain), lineages)[,-1]
+
+# convert fine lineages into one-hot format
+sublineages <- model.matrix(Taxon~as.factor(Subcluster_1), sublineages)[,-1]
+
+# parent_lineage[k] gives the column index (in lineages) of the parent for sublineage k; it's also in one-hot format
+# we need this to fit the hierarchical model
+parent_lineage <- integer(ncol(sublineages))
+for (k in seq_len(ncol(sublineages))) {
+  sub_idx <- which(sublineages[, k] == 1)
+  lineage_counts <- colSums(lineages[sub_idx, , drop = FALSE])
+  parent_lineage[k] <- which.max(lineage_counts)
+}
+
+# make data into file
+cleaned_gwas_data <- list(phenotype = penicillin_mics$resistance,
+                          variant_matrix = genotype,
+                          lineage_matrix = lineages,
+                          sublineage_matrix = sublineages,
+                          N=N,
+                          V=V,
+                          L=L,
+                          S=S,
+                          parent_lineage = parent_lineage)
+
+# save completed bundle, ready for gwas, to the appropriate folder
+# we use stan json format as other formats (such as RDump) aren't supported by cmdstan
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin", pattern = "spn_sparc_binary_penicillin_maf_0.05_multiallelic_sublineages_parentlin_")
+cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
+
+# create index of variant positions
+index <- as.matrix(colnames(genotype))
+index <- sub('^Chromosome_', '', index)
+variant_pos <- (sub("_[^_]+$", "", index))
+variant_pos <- as.numeric(sub("_[^_]+$", "", variant_pos))
+variant_pos <- as.data.frame(variant_pos, as.matrix(colnames(genotype)))
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/spn_sparc_binary_penicillin_maf_0.05_multiallelic_sublineages_associative_variant_index_parentlin.csv")
+
+
+
+##################################### BINARY EUCAST (new genotyping -- MAF=0.05, NO MODIFIERS, mulitallelic, WITH SUBCLUSTERING -- replace with coarse clusters)
+
+# read in genotype 
+genotype <- read.delim(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/genotype_maf05_NOMODIFIERS_multiallelic.tsv", 
+                       sep = "", header = F, row.names = 1)
+colnames(genotype) <- genotype[1,]
+genotype <- genotype[-1,]
+colnames(genotype) <- sub('^results_', '', colnames(genotype)) # fix colnames
+genotype[] <- lapply(genotype, function(x) as.integer(as.character(x))) # convert to integers
+
+# read in lineages and sublineages from poppipe
+lineages <- read.csv(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/lineages/sublineages_from_poppipe/min_cluster_3/all_clusters.txt")
+sublineages <- lineages[,c(1,3)]
+lineages <- lineages[,c(1,2)]
+
+# replace NAs with coarse cluster designation
+# appended zeros to avoid accidentally assigning a to a subcluster that already exists
+NA_sublin <- which(is.na(sublineages[,2]))
+replacement <- as.numeric(paste(lineages[NA_sublin,2], "0000", sep = ""))
+sublineages[NA_sublin,2] <- replacement
+
+# read in phenotype data
+penicillin_mics <- read.csv("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/phenotype/sparc_penicillin_eucast_binary.csv", na.strings = "")
+
+### ensure order/number of samples matches between these 3 data sets:
+
+# obtain only samples present in all dataframes
+common_ids <- Reduce(intersect, list(penicillin_mics$ID, dimnames(genotype)[[2]], lineages$Taxon, sublineages$Taxon))
+
+# set one as the reference order
+reference_order <- penicillin_mics$ID[penicillin_mics$ID %in% common_ids]
+
+# sort and filter
+penicillin_mics <- penicillin_mics[penicillin_mics$ID %in% common_ids, ]
+
+lineages <- lineages[lineages$Taxon %in% common_ids, ]
+lineages <- lineages[match(reference_order, lineages$Taxon), ]
+
+sublineages <- sublineages[sublineages$Taxon %in% common_ids, ]
+sublineages <- sublineages[match(reference_order, sublineages$Taxon), ]
+
+# transpose genotype data (need samples in rows and variants in columns)
+genotype <- t(genotype)
+genotype <- genotype[dimnames(genotype)[[1]] %in% common_ids, ]
+genotype <- genotype[match(reference_order, dimnames(genotype)[[1]]), ]
+
+# combine into one file (to check for correctness)
+checkme <- cbind(genotype[,1], penicillin_mics, lineages, sublineages)
+
+# define V = number of variants, L = number of lineages, S = number of sublineages, N = number of samples
+# define V = number of variants, L = number of lineages, N = number of samples
+V <- as.numeric(ncol(genotype))
+L <- as.numeric(length(unique(lineages$Strain)))
+N <- as.numeric(nrow(penicillin_mics))
+S <- as.numeric(length(unique(sublineages$Subcluster_1)))
+
+# convert coarse lineages into one-hot format
+lineages <- model.matrix(Taxon~as.factor(Strain), lineages)[,-1]
+
+# convert fine lineages into one-hot format
+sublineages <- model.matrix(Taxon~as.factor(Subcluster_1), sublineages)[,-1]
+
+# make data into file
+cleaned_gwas_data <- list(phenotype = penicillin_mics$resistance,
+                          variant_matrix = genotype,
+                          lineage_matrix = lineages,
+                          sublineage_matrix = sublineages,
+                          N=N,
+                          V=V,
+                          L=L,
+                          S=S)
+
+# save completed bundle, ready for gwas, to the appropriate folder
+# we use stan json format as other formats (such as RDump) aren't supported by cmdstan
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin", pattern = "spn_sparc_binary_penicillin_maf_0.05_NOMODIFIERS_multiallelic_sublineages_")
+cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
+
+# create index of variant positions
+index <- as.matrix(colnames(genotype))
+index <- sub('^Chromosome_', '', index)
+variant_pos <- (sub("_[^_]+$", "", index))
+variant_pos <- as.numeric(sub("_[^_]+$", "", variant_pos))
+variant_pos <- as.data.frame(variant_pos, as.matrix(colnames(genotype)))
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/spn_sparc_binary_penicillin_maf_0.05_NOMODIFIERS_multiallelic_sublineages_associative_variant_index.csv")
+
+
+
+##################################### BINARY EUCAST (new genotyping -- MAF=0.05, NO MODIFIERS & NO SYNONYMOUS, mulitallelic, WITH SUBCLUSTERING -- replace with coarse clusters)
+
+# read in genotype 
+genotype <- read.delim(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/genotype_maf05_NOMODIFIERS_NOSYNONYMOUS_multiallelic.tsv", 
+                       sep = "", header = F, row.names = 1)
+colnames(genotype) <- genotype[1,]
+genotype <- genotype[-1,]
+colnames(genotype) <- sub('^results_', '', colnames(genotype)) # fix colnames
+genotype[] <- lapply(genotype, function(x) as.integer(as.character(x))) # convert to integers
+
+# read in lineages and sublineages from poppipe
+lineages <- read.csv(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/lineages/sublineages_from_poppipe/min_cluster_3/all_clusters.txt")
+sublineages <- lineages[,c(1,3)]
+lineages <- lineages[,c(1,2)]
+
+# replace NAs with coarse cluster designation
+# appended zeros to avoid accidentally assigning a to a subcluster that already exists
+NA_sublin <- which(is.na(sublineages[,2]))
+replacement <- as.numeric(paste(lineages[NA_sublin,2], "0000", sep = ""))
+sublineages[NA_sublin,2] <- replacement
+
+# read in phenotype data
+penicillin_mics <- read.csv("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/phenotype/sparc_penicillin_eucast_binary.csv", na.strings = "")
+
+### ensure order/number of samples matches between these 3 data sets:
+
+# obtain only samples present in all dataframes
+common_ids <- Reduce(intersect, list(penicillin_mics$ID, dimnames(genotype)[[2]], lineages$Taxon, sublineages$Taxon))
+
+# set one as the reference order
+reference_order <- penicillin_mics$ID[penicillin_mics$ID %in% common_ids]
+
+# sort and filter
+penicillin_mics <- penicillin_mics[penicillin_mics$ID %in% common_ids, ]
+
+lineages <- lineages[lineages$Taxon %in% common_ids, ]
+lineages <- lineages[match(reference_order, lineages$Taxon), ]
+
+sublineages <- sublineages[sublineages$Taxon %in% common_ids, ]
+sublineages <- sublineages[match(reference_order, sublineages$Taxon), ]
+
+# transpose genotype data (need samples in rows and variants in columns)
+genotype <- t(genotype)
+genotype <- genotype[dimnames(genotype)[[1]] %in% common_ids, ]
+genotype <- genotype[match(reference_order, dimnames(genotype)[[1]]), ]
+
+# combine into one file (to check for correctness)
+checkme <- cbind(genotype[,1], penicillin_mics, lineages, sublineages)
+
+# define V = number of variants, L = number of lineages, S = number of sublineages, N = number of samples
+# define V = number of variants, L = number of lineages, N = number of samples
+V <- as.numeric(ncol(genotype))
+L <- as.numeric(length(unique(lineages$Strain)))
+N <- as.numeric(nrow(penicillin_mics))
+S <- as.numeric(length(unique(sublineages$Subcluster_1)))
+
+# convert coarse lineages into one-hot format
+lineages <- model.matrix(Taxon~as.factor(Strain), lineages)[,-1]
+
+# convert fine lineages into one-hot format
+sublineages <- model.matrix(Taxon~as.factor(Subcluster_1), sublineages)[,-1]
+
+# make data into file
+cleaned_gwas_data <- list(phenotype = penicillin_mics$resistance,
+                          variant_matrix = genotype,
+                          lineage_matrix = lineages,
+                          sublineage_matrix = sublineages,
+                          N=N,
+                          V=V,
+                          L=L,
+                          S=S)
+
+# save completed bundle, ready for gwas, to the appropriate folder
+# we use stan json format as other formats (such as RDump) aren't supported by cmdstan
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin", pattern = "spn_sparc_binary_penicillin_maf_0.05_NOMODIFIERS_NOSYNON_multiallelic_sublineages_")
+cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
+
+# create index of variant positions
+index <- as.matrix(colnames(genotype))
+index <- sub('^Chromosome_', '', index)
+variant_pos <- (sub("_[^_]+$", "", index))
+variant_pos <- as.numeric(sub("_[^_]+$", "", variant_pos))
+variant_pos <- as.data.frame(variant_pos, as.matrix(colnames(genotype)))
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/spn_sparc_binary_penicillin_maf_0.05_NOMODIFIERS_NOSYNON_multiallelic_sublineages_associative_variant_index.csv")
+
+
+##################################### BINARY PYSEER (new genotyping -- MAF=0.05, NO MODIFIERS, mulitallelic, WITH SUBCLUSTERING -- replace with coarse clusters)
+
+# read in genotype 
+genotype <- read.delim(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/genotype/genotype_maf05_NOMODIFIERS_multiallelic.tsv", 
+                       sep = "", header = F, row.names = 1)
+colnames(genotype) <- genotype[1,]
+genotype <- genotype[-1,]
+colnames(genotype) <- sub('^results_', '', colnames(genotype)) # fix colnames
+genotype[] <- lapply(genotype, function(x) as.integer(as.character(x))) # convert to integers
+
+# read in lineages and sublineages from poppipe
+lineages <- read.csv(file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/lineages/sublineages_from_poppipe/min_cluster_3/all_clusters.txt")
+sublineages <- lineages[,c(1,3)]
+lineages <- lineages[,c(1,2)]
+
+# replace NAs with coarse cluster designation
+# appended zeros to avoid accidentally assigning a to a subcluster that already exists
+NA_sublin <- which(is.na(sublineages[,2]))
+replacement <- as.numeric(paste(lineages[NA_sublin,2], "0000", sep = ""))
+sublineages[NA_sublin,2] <- replacement
+
+# read in phenotype data
+penicillin_mics <- read.delim("/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/pyseer_data/pyseer_tutorial/resistances.pheno", na.strings = "")
+colnames(penicillin_mics) <- c("ID", "resistance")
+
+### ensure order/number of samples matches between these 3 data sets:
+
+# obtain only samples present in all dataframes
+common_ids <- Reduce(intersect, list(penicillin_mics$ID, dimnames(genotype)[[2]], lineages$Taxon, sublineages$Taxon))
+
+# set one as the reference order
+reference_order <- penicillin_mics$ID[penicillin_mics$ID %in% common_ids]
+
+# sort and filter
+penicillin_mics <- penicillin_mics[penicillin_mics$ID %in% common_ids, ]
+
+lineages <- lineages[lineages$Taxon %in% common_ids, ]
+lineages <- lineages[match(reference_order, lineages$Taxon), ]
+
+sublineages <- sublineages[sublineages$Taxon %in% common_ids, ]
+sublineages <- sublineages[match(reference_order, sublineages$Taxon), ]
+
+# transpose genotype data (need samples in rows and variants in columns)
+genotype <- t(genotype)
+genotype <- genotype[dimnames(genotype)[[1]] %in% common_ids, ]
+genotype <- genotype[match(reference_order, dimnames(genotype)[[1]]), ]
+
+# combine into one file (to check for correctness)
+checkme <- cbind(genotype[,1], penicillin_mics, lineages, sublineages)
+
+# define V = number of variants, L = number of lineages, S = number of sublineages, N = number of samples
+# define V = number of variants, L = number of lineages, N = number of samples
+V <- as.numeric(ncol(genotype))
+L <- as.numeric(length(unique(lineages$Strain)))
+N <- as.numeric(nrow(penicillin_mics))
+S <- as.numeric(length(unique(sublineages$Subcluster_1)))
+
+# convert coarse lineages into one-hot format
+lineages <- model.matrix(Taxon~as.factor(Strain), lineages)[,-1]
+
+# convert fine lineages into one-hot format
+sublineages <- model.matrix(Taxon~as.factor(Subcluster_1), sublineages)[,-1]
+
+# make data into file
+cleaned_gwas_data <- list(phenotype = penicillin_mics$resistance,
+                          variant_matrix = genotype,
+                          lineage_matrix = lineages,
+                          sublineage_matrix = sublineages,
+                          N=N,
+                          V=V,
+                          L=L,
+                          S=S)
+
+# save completed bundle, ready for gwas, to the appropriate folder
+# we use stan json format as other formats (such as RDump) aren't supported by cmdstan
+json_file <- tempfile(fileext = ".json", tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin", pattern = "spn_sparc_binary_PYSEERPHENO_penicillin_maf_0.05_NOMOD_multiallelic_sublineages_")
+cmdstanr::write_stan_json(data = cleaned_gwas_data, file = json_file)
+
+# create index of variant positions
+index <- as.matrix(colnames(genotype))
+index <- sub('^Chromosome_', '', index)
+variant_pos <- (sub("_[^_]+$", "", index))
+variant_pos <- as.numeric(sub("_[^_]+$", "", variant_pos))
+variant_pos <- as.data.frame(variant_pos, as.matrix(colnames(genotype)))
+write.csv(x = variant_pos,
+          file = "/nfs/research/jlees/jacqueline/gwas_data/spn_pneumo/gwas_bundles/penicillin/spn_sparc_binary_PYSEERPHENO_penicillin_maf_0.05_NOMOD_multiallelic_sublineages__associative_variant_index.csv")
+
+
 ##################################### BINARY PENICILLIN
 
 # read in genotype 
