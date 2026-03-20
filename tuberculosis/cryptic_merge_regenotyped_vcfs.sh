@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-#SBATCH --time=10:00:00   # walltime
+#SBATCH --time=48:00:00   # walltime
 #SBATCH --ntasks=1   # number of tasks
-#SBATCH --cpus-per-task=20   # number of CPUs Per Task
+#SBATCH --cpus-per-task=48   # number of CPUs Per Task
 #SBATCH --nodes=1   # number of nodes
-#SBATCH --mem=100GB   # memory per node
+#SBATCH --mem=290GB   # memory per node
 #SBATCH --partition=datamover
 #SBATCH --propagate=STACK # prevents bcftools 'too many open files' error
 #SBATCH -J "merge_cryptic_vcfs"   # job name
@@ -22,8 +22,8 @@ data_dir=/nfs/research/jlees/jacqueline/gwas_data/tuberculosis/cryptic_regeno_sn
 # check that there are SNPs in the rpoB region
 #bcftools query -f'%CHROM  %POS  %REF  %ALT{0}\n'  -r NC_000962.3:763370-767320 site.02.iso.1.subject.0010.lab_id.2014222040.seq_reps.14222040.regeno.vcf.gz
 
-#bcftools merge --file-list $outdir/../file.txt -m none -O z -o $outdir/cryptic_merged_regenotyped.vcf.gz
-#bcftools index $outdir/cryptic_merged_regenotyped.vcf.gz
+bcftools merge --file-list $outdir/../file.txt -m none -Oz --threads 48 -o $outdir/cryptic_merged_regenotyped.vcf.gz
+bcftools index $outdir/cryptic_merged_regenotyped.vcf.gz
 
 cd $data_dir
 
@@ -51,6 +51,8 @@ cd $data_dir
 #bcftools filter -i'INFO/MAF>0.0004' cryptic_regeno_addtags.vcf.gz --threads 20 --output $data_dir/cryptic_regeno_MAF_0.0004.vcf.gz
 #bcftools index cryptic_regeno_MAF_0.0004.vcf.gz # 87 mutations in rpoB, at least 5 samples per variant
 
+
+
 # fix ref/alt calls (missings to 0, multiallelics to 1)
 bcftools +setGT cryptic_regeno_MAF_0.0004_effannotated.vcf.gz  -Oz -o cryptic_regeno_MAF_0.0004_effannotated_tmp.vcf.gz -- -t q -n c:"0" -i 'GT="."'
 bcftools index cryptic_regeno_MAF_0.0004_effannotated_tmp.vcf.gz
@@ -59,4 +61,12 @@ bcftools +setGT cryptic_regeno_MAF_0.0004_effannotated_tmp.vcf.gz  -Oz -o crypti
 bcftools index cryptic_regeno_MAF_0.0004_effannotated_binary.vcf.gz
 
 rm cryptic_regeno_MAF_0.0004_effannotated_tmp.vcf.gz*
+
+# extract SnpEff annotations with SnpSift
+
+#gunzip -c cryptic_regeno_MAF_0.0004_effannotated_binary.vcf.gz > cryptic_regeno_MAF_0.0004_effannotated_binary.vcf
+
+#cat cryptic_regeno_MAF_0.0004_effannotated_binary.vcf | /hps/software/users/jlees/jacqueline/pkgs/snpsift-5.2-hdfd78af_0/share/snpsift-5.2-0/scripts/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" > cryptic_regeno_fields_all.txt
+#cat cryptic_regeno_MAF_0.0004_effannotated_binary.vcf |  /hps/software/users/jlees/jacqueline/pkgs/snpsift-5.2-hdfd78af_0/share/snpsift-5.2-0/scripts/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" | sed '/MODIFIER/d' > cryptic_regeno_fields_filtered.txt
+
 

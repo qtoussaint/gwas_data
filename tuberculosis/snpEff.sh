@@ -32,11 +32,11 @@ cd $outdir
 
 # in bcftools env:
 
-#snpEff eff -v Mycobacterium_tuberculosis_h37rv -lof $outdir/tb_snps_renamed.vcf | bgzip > $outdir/snps_effannotated.vcf.gz # (-lof adds loss of function tags)
+snpEff eff -v Mycobacterium_tuberculosis_h37rv -lof $outdir/.vcf | bgzip > $outdir/snps_effannotated.vcf.gz # (-lof adds loss of function tags)
 
 # extract fields with one line per effect
 
-#gunzip -c snps_effannotated.vcf.gz > snps_effannotated.vcf
+gunzip -c snps_effannotated.vcf.gz > snps_effannotated.vcf
 
 cat snps_effannotated.vcf | /hps/software/users/jlees/jacqueline/pkgs/snpsift-5.2-hdfd78af_0/share/snpsift-5.2-0/scripts/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" > fields_all.txt
 

@@ -16,7 +16,7 @@ dataset=RIF_K8
 # activate bcftools conda env
 
 # filter out unwanted samples for given dataset
-#bcftools view -S $wd/sample_index_$dataset.txt $wd/cryptic_regeno_MAF_0.0004_effannotated_binary.vcf.gz -Oz -o $wd/subsampled_presabs/filtered_$dataset.vcf.gz
+#bcftools view -S $wd/sample_index_$dataset.txt $wd/cryptic_regeno_MAF_0.0004.allchunks_effannotated_binary.vcf.gz -Oz -o $wd/subsampled_presabs/filtered_$dataset.vcf.gz
 #bcftools index $wd/subsampled_presabs/filtered_$dataset.vcf.gz
 
 # extract pres/abs matrix
@@ -25,10 +25,10 @@ dataset=RIF_K8
 # ACTIVATE DATAMASH ENV
 
 # transpose
-datamash transpose < $wd/subsampled_presabs/presabs_unformatted_$dataset.tsv > $wd/subsampled_presabs/presence_absence_T_$dataset.tsv
+#datamash transpose < $wd/subsampled_presabs/presabs_unformatted_$dataset.tsv > $wd/subsampled_presabs/presence_absence_T_$dataset.tsv
 
 # remove the variant index and output to separate file
-head -n 1 $wd/subsampled_presabs/presence_absence_T_$dataset.tsv > $wd/subsampled_presabs/variant_index_presence_absence_$dataset.tsv
+#head -n 1 $wd/subsampled_presabs/presence_absence_T_$dataset.tsv > $wd/subsampled_presabs/variant_index_presence_absence_$dataset.tsv
 
 # remove variants
 sed '1d' $wd/subsampled_presabs/presence_absence_T_$dataset.tsv > presence_absence_final_$dataset.tsv

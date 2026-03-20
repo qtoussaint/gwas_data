@@ -6,7 +6,8 @@ library("data.table")
 ###################################################
 
 # read in variants
-genotype <- fread("/nfs/research/jlees/jacqueline/gwas_data/tuberculosis/cryptic_regeno_snpeff/cryptic_regeno_MAF_0.0004_effannotated.vcf.gz")
+genotype <- fread("/nfs/research/jlees/jacqueline/gwas_data/tuberculosis/cryptic_regeno_snpeff/cryptic_regeno_MAF_0.0004.allchunks_effannotated_binary.vcf.gz", 
+                  nThread = 45, tmpdir = "/nfs/research/jlees/jacqueline/gwas_data/tuberculosis/cryptic_regeno_snpeff/tmp/")
 
 # remove variant metadata
 variants <- genotype[,c(1:9)] # retain variant ids
@@ -24,13 +25,13 @@ match(samples, phenotype_samples)
 
 # remove VCF formatting from variant calls
 genotype <- as.matrix(genotype[, 1:ncol(genotype)])
-genotype <- sub(":.*", "", genotype)
+#genotype <- sub(":.*", "", genotype)
 
 # fix ref/alt calls
-genotype[genotype == "."] <- "0"
-num_vals <- as.numeric(genotype)
-genotype[!is.na(num_vals) & num_vals >= 1 & num_vals <= 1000] <- "1"
-genotype[] <- lapply(genotype, as.numeric)
+#genotype[genotype == "."] <- "0"
+#num_vals <- as.numeric(genotype)
+#genotype[!is.na(num_vals) & num_vals >= 1 & num_vals <= 1000] <- "1"
+#genotype[] <- lapply(genotype, as.numeric)
 
 # now add variants to rownames
 variant_id <- paste0(variants$`#CHROM`, "_", variants$POS, "_", variants$REF, "_", variants$ALT)
@@ -39,4 +40,4 @@ genotype <- cbind(variant_id, genotype)
 # write to TSV file (for faster reading in next time)
 fwrite(genotype,
        "/nfs/research/jlees/jacqueline/gwas_data/tuberculosis/cryptic_regeno_snpeff/cryptic_regeno_MAF_0.0004_effannotated_presabs.tsv",
-       sep = "\t", col.names = F, row.names = F, quote = F)
+       sep = "\t", col.names = F, row.names = F, quote = F, nThread = 45)
