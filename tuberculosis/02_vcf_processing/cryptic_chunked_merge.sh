@@ -102,9 +102,11 @@ cd $data_dir
 
 #gunzip -c $data_dir/cryptic_regeno_MAF_0.0004.allchunks_effannotated.vcf.gz > $data_dir/cryptic_regeno_MAF_0.0004.allchunks_effannotated.vcf
 
-cat $data_dir/cryptic_regeno_MAF_0.0004.allchunks_effannotated.vcf | /hps/software/users/jlees/jacqueline/pkgs/snpsift-5.2-hdfd78af_0/share/snpsift-5.2-0/scripts/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" > fields_all.txt
+# remove old snpsift script /hps/software/users/jlees/jacqueline/pkgs/snpsift-5.2-hdfd78af_0/share/snpsift-5.2-0/scripts/vcfEffOnePerLine.pl
 
-cat $data_dir/cryptic_regeno_MAF_0.0004.allchunks_effannotated.vcf |  /hps/software/users/jlees/jacqueline/pkgs/snpsift-5.2-hdfd78af_0/share/snpsift-5.2-0/scripts/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" | sed '/MODIFIER/d' > fields_filtered.txt
+cat $data_dir/cryptic_regeno_MAF_0.0004.allchunks_effannotated.vcf | /nfs/research/jlees/jacqueline/gwas_data/code/gwas_data/tuberculosis/02_vcf_processing/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" > fields_all.txt
+
+cat $data_dir/cryptic_regeno_MAF_0.0004.allchunks_effannotated.vcf | /nfs/research/jlees/jacqueline/gwas_data/code/gwas_data/tuberculosis/02_vcf_processing/vcfEffOnePerLine.pl | SnpSift extractFields -  POS REF ALT "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "LOF[*].GENE" | sed '/MODIFIER/d' > fields_filtered.txt
 
 # fix ref/alt calls (missings to 0, multiallelics to 1)
 #bcftools +setGT $data_dir/cryptic_regeno_MAF_0.0004.allchunks_effannotated.vcf.gz -Oz -o $data_dir/cryptic_regeno_MAF_0.0004.allchunks_effannotated_tmp.vcf.gz -- -t q -n c:"0" -i 'GT="."'
