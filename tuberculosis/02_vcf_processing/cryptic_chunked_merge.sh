@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-#SBATCH --time=48:00:00   # walltime
+#SBATCH --time=96:00:00   # walltime
 #SBATCH --cpus-per-task=48   # number of CPUs Per Task
 #SBATCH --nodes=1   # number of nodes
-#SBATCH --mem=40GB   # memory per node
+#SBATCH --mem=400GB   # memory per node
 #SBATCH --partition=datamover
 #SBATCH --propagate=STACK # prevents bcftools 'too many open files' error
 #SBATCH -J "merge_cryptic_vcfs"   # job name
